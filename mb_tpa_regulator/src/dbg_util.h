@@ -1,6 +1,8 @@
 #ifndef DBG_UTIL_H
 #define DBG_UTIL_H
 
+#include <stdint.h>
+
 #define SET(x, y) ((x) |= (1 << (y)))
 
 struct debugger {
@@ -12,5 +14,7 @@ struct debugger {
 	uint32_t on_ct;
 	uint32_t vals[4];
 };
+
+void report(const char* format, ... );
 
 #endif // DBG_UTIL_H
