@@ -3,7 +3,15 @@
 #include "etm_pkt_headers.h"
 #include "dbg_util.h"
 
-uint32_t try_read_data(uint8_t* dest, uint32_t bytes) {
+// All 4 buffers are 4K in total, each buffer is 1K
+volatile uint8_t ptrc_buf[4][PTRC_BUFFER_SIZE / 4] __attribute__((section(".ptrc_buf_zone")));
+volatile uint32_t ptrc_abs_wpt[4] __attribute__((section(".ptrc_buf_pointer_zone")));
+volatile uint32_t ptrc_abs_rpt[4] __attribute__((section(".ptrc_buf_pointer_zone")));
+uint32_t virtual_offset = 0;
+uint8_t virtual_read_failed = 0;
+uint32_t current_buffer_id = 0;
+
+static uint32_t try_read_data(uint8_t* dest, uint32_t bytes) {
 	if (virtual_read_failed) {
 		report("PAUSED, repeated call to try_read_data when virtual_read_failed");
 		while(1);
@@ -29,7 +37,7 @@ void apply_virtual_offset() {
 	ptrc_abs_rpt[current_buffer_id] = ptrc_abs_rpt[current_buffer_id] + virtual_offset;
 }
 
-void handle_exc_or_shortaddr() {
+static void handle_exc_or_shortaddr() {
 	uint8_t payload;
 
 	if (try_read_data(&payload, 1) == 0)
@@ -41,7 +49,7 @@ void handle_exc_or_shortaddr() {
 	}
 }
 
-void handle_longaddress(uint8_t header) {
+static void handle_longaddress(uint8_t header) {
 	uint8_t payload[8];
 	uint64_t address;
 
@@ -86,7 +94,7 @@ void handle_longaddress(uint8_t header) {
 	}
 }
 
-void handle_context(uint8_t header) {
+static void handle_context(uint8_t header) {
 	uint8_t context_info, vmid;
 	uint8_t contextid[4];
 
@@ -114,7 +122,7 @@ void handle_context(uint8_t header) {
 	}
 }
 
-void handle_addrwithcontext(uint8_t header) {
+static void handle_addrwithcontext(uint8_t header) {
 	switch (header) {
 		case AddrWithContext0:
 			handle_longaddress(LongAddress3);
@@ -150,10 +158,7 @@ void handle_buffer(void) {
 		case TraceOn:
 			in_range[current_buffer_id] = 1;
 			debug_count1[current_buffer_id]++;
-
-			debug_ptr(0);
 			dbg.select = 1 << 0;
-
 			break;
 
 		case AddrWithContext0:
@@ -161,9 +166,6 @@ void handle_buffer(void) {
 		case AddrWithContext2:
 		case AddrWithContext3:
 			handle_addrwithcontext(header);
-
-			debug_ptr(1);
-
 			dbg.select = 1 << 1;
 			break;
 
@@ -171,39 +173,25 @@ void handle_buffer(void) {
 		case ShortAddr1:
 		case Exce:
 			handle_exc_or_shortaddr();
-
-			debug_ptr(2);
-
 			dbg.select = 1 << 2;
-
 			break;
 
 		case Async:
 			virtual_offset += 11;
-
-			debug_ptr(3);
-
 			dbg.select = 1 << 3;
 			break;
 		case LongAddress0:// Long Address with 8B payload
 		case LongAddress1:
 			virtual_offset += 8;
-
-			debug_ptr(4);
-
 			dbg.select = 1 << 4;
 			break;
 		case LongAddress2:// Long Address with 4B payload
 		case LongAddress3:
 			virtual_offset += 4;
-
-			debug_ptr(5);
 			dbg.select = 1 << 5;
 			break;
 		case TraceInfo:
 			virtual_offset += 2;
-
-			debug_ptr(6);
 			dbg.select = 1 << 6;
 			break;
 
@@ -214,7 +202,6 @@ void handle_buffer(void) {
 		case Event1:
 		case Event2:
 		case Event3:
-			debug_ptr(7);
 			dbg.select = 1 << 7;
 			break;
 

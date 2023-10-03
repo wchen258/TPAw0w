@@ -15,6 +15,13 @@ struct debugger {
 	uint32_t vals[4];
 };
 
+extern volatile uint32_t debug_flag;
+extern uint32_t debug_count1[4];
+extern uint32_t debug_count2[4];
+extern uint32_t debug_count3[4];
+extern volatile struct debugger dbg;
+
 void report(const char* format, ... );
+void debug_ptr(uint32_t point);
 
 #endif // DBG_UTIL_H
