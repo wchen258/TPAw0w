@@ -13,23 +13,20 @@
 volatile uint8_t tmg_buf[4][TMG_BUFFER_SIZE / 4] __attribute__((section(".tmg_mem_zone")));
 tmg_node* tmg_current_node[4];
 
-
-uint8_t in_range[4];
-
 void regulator_loop(void) {
 	uint8_t i;
 
 	while (1) {
 		for (i = 0; i < 4; ++i) {
-			virtual_offset = 0;
-			virtual_read_failed = 0;
-			current_buffer_id = i;
+			// virtual_offset = 0;
+			// virtual_read_failed = 0;
+			// current_buffer_id = i;
 
-			handle_buffer();
+			handle_buffer(i);
 
-			if (virtual_read_failed == 0) {
-				apply_virtual_offset(); 
-			}
+			// if (virtual_read_failed == 0) {
+			// 	apply_virtual_offset(); 
+			// }
 		}
 	}
 }
@@ -38,18 +35,18 @@ void reset(void) {
 	uint32_t i, j;
 
 	for (i = 0; i < 4; ++i) {
-		for (j = 0; j < PTRC_BUFFER_SIZE / 4; ++j)
-			ptrc_buf[i][j] = 0;
+		// for (j = 0; j < PTRC_BUFFER_SIZE / 4; ++j)
+		// 	ptrc_buf[i][j] = 0;
+
+		reset_ptrc_buf(i);
 
 		for (j = 0; j < TMG_BUFFER_SIZE / 4; ++j)
 			tmg_buf[i][j] = 0xFF;
 
 		dbg.tmg_ready = 0;
 
-		ptrc_abs_wpt[i] = 0;
-		ptrc_abs_rpt[i] = 0;
-
-		in_range[i] = 0;
+		// ptrc_abs_wpt[i] = 0;
+		// ptrc_abs_rpt[i] = 0;
 
 		debug_count1[i] = 0;
 		debug_count2[i] = 0;
@@ -96,16 +93,12 @@ int main() {
     // process_tmg_buffer();
 
     report("TMG Buffer Loaded. Starting loop");
-    report("ptrc_buf     address: 0x%x", ptrc_buf);
-    report("ptrc_abs_wpt address: 0x%x", ptrc_abs_wpt);
-    report("ptrc_abs_rpt address: 0x%x", ptrc_abs_rpt);
+	report_ptrc_mem();
     report("dbg          address: 0x%x", &dbg);
     report("debug_count1 address: 0x%x", debug_count1);
     report("debug_count2 address: 0x%x", debug_count2);
     report("debug_count3 address: 0x%x", debug_count3);
     report("debug_flag   address: 0x%x", &debug_flag);
-    report("virtual offset      : 0x%x", &virtual_offset);
-    report("virtual_read_failed : 0x%x", &virtual_read_failed);
 
     debug_ptr(13);
 
