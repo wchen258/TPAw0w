@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "ptrc_parser.h"
 #include "etm_pkt_headers.h"
+#include "tmg_monitor.h"
 #include "dbg_util.h"
 
 // All 4 buffers are 4K in total, each buffer is 1K
@@ -66,9 +67,9 @@ static void handle_longaddress(uint8_t header) {
 				(((uint64_t)payload[4]) << 32) | (((uint64_t)payload[5]) << 40) |
 				(((uint64_t)payload[6]) << 48) | (((uint64_t)payload[7]) << 56);
 
-			debug_count2[current_buffer_id]++;
 			if (in_range[current_buffer_id]) {
-				debug_count3[current_buffer_id]++;
+				report_address_hit(current_buffer_id, address);
+
 				in_range[current_buffer_id] = 0;
 			}
 
@@ -77,19 +78,14 @@ static void handle_longaddress(uint8_t header) {
 			if (try_read_data(&payload[0], 8) == 0)
 				return;
 
-			debug_ptr(31);
-
 			break;
 		case LongAddress3:
 		case LongAddress2:
 			if (try_read_data(&payload[0], 4) == 0)
 				return;
 
-			debug_ptr(30);
-
 			break;
 		default:
-			debug_ptr(26);
 			report("PAUSED, handle_longaddress default case");
 			while(1);
 	}
@@ -100,7 +96,6 @@ static void handle_context(uint8_t header) {
 	uint8_t contextid[4];
 
 	if ((header & 0x1) == 0) {
-		debug_ptr(29);
 		report("PAUSED, handle_context (header & 0x1) == 0");
 		while(1);
 	} else {
@@ -110,15 +105,11 @@ static void handle_context(uint8_t header) {
 		if (((context_info >> 6) & 1) == 1) {
 			if (try_read_data(&vmid, 1) == 0)
 				return;
-
-			debug_ptr(5);
 		}
 
 		if ((context_info >> 7) == 1) {
 			if (try_read_data(&contextid[0], 4) == 0)
 				return;
-
-			debug_ptr(6);
 		}
 	}
 }
@@ -138,7 +129,6 @@ static void handle_addrwithcontext(uint8_t header) {
 			handle_longaddress(LongAddress1);
 			break;
 		default:
-			debug_ptr(25);
 			report("PAUSED, handle_addrwithcontext default case");
 			while(1);
 	}
@@ -162,7 +152,7 @@ void handle_buffer(uint8_t buffer_id) {
 	    switch (header) {
 		    case TraceOn:
 			    in_range[current_buffer_id] = 1;
-			    debug_count1[current_buffer_id]++;
+
 			    dbg.select = 1 << 0;
 			    break;
 
@@ -211,7 +201,6 @@ void handle_buffer(uint8_t buffer_id) {
 			    break;
 
 		    default:
-			    debug_ptr(21);
 			    report("PAUSED, handle_buffer default case, buffer_id: %d, header: 0x%x", current_buffer_id, header);
 			    while(1);
 	    }
