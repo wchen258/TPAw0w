@@ -1,55 +1,11 @@
-/******************************************************************************
-*
-* Copyright (C) 2009 - 2014 Xilinx, Inc.  All rights reserved.
-*
-* Permission is hereby granted, free of charge, to any person obtaining a copy
-* of this software and associated documentation files (the "Software"), to deal
-* in the Software without restriction, including without limitation the rights
-* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-* copies of the Software, and to permit persons to whom the Software is
-* furnished to do so, subject to the following conditions:
-*
-* The above copyright notice and this permission notice shall be included in
-* all copies or substantial portions of the Software.
-*
-* Use of the Software is limited solely to applications:
-* (a) running on a Xilinx device, or
-* (b) that interact with a Xilinx device through a bus or interconnect.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-* XILINX  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-* WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-* OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-* SOFTWARE.
-*
-* Except as contained in this notice, the name of the Xilinx shall not be used
-* in advertising or otherwise to promote the sale, use or other dealings in
-* this Software without prior written authorization from Xilinx.
-*
-******************************************************************************/
-
-/*
- * helloworld.c: simple test application
- *
- * This application configures UART 16550 to baud rate 9600.
- * PS7 UART (Zynq) is not initialized by this application, since
- * bootrom/bsp configures it to baud rate 115200
- *
- * ------------------------------------------------
- * | UART TYPE   BAUD RATE                        |
- * ------------------------------------------------
- *   uartns550   9600
- *   uartlite    Configurable only in HW design
- *   ps7_uart    115200 (configured by bootrom/bsp)
- */
-
 #include <stdio.h>
 #include "platform.h"
 #include "xil_printf.h"
 #include "sleep.h"
 #include "etm_pkt_headers.h"
+#include "timed_milestone_graph.h"
+#include "dbg_util.h"
+#include "xil_cache.h"
 
 // MISC, PRINTF
 void report(const char* format, ... ) {
@@ -65,11 +21,18 @@ void report(const char* format, ... ) {
 #define PTRC_BUFFER_SIZE 4096
 volatile uint8_t ptrc_buf[4][PTRC_BUFFER_SIZE / 4] __attribute__((section(".ptrc_buf_zone")));
 volatile uint32_t ptrc_abs_wpt[4] __attribute__((section(".ptrc_buf_pointer_zone")));
-volatile uint32_t ptrc_abs_rpt[4];
+volatile uint32_t ptrc_abs_rpt[4] __attribute__((section(".ptrc_buf_pointer_zone")));
+
+#define TMG_BUFFER_SIZE 4096
+volatile uint8_t tmg_buf[4][TMG_BUFFER_SIZE / 4] __attribute__((section(".tmg_mem_zone")));
+tmg_node* tmg_current_node[4];
+
+uint32_t virtual_offset = 0;
+uint8_t virtual_read_failed = 0;
+uint32_t current_buffer_id = 0;
 
 volatile uint32_t debug_flag = 0;
 uint8_t in_range[4];
-
 uint32_t debug_count1[4];
 uint32_t debug_count2[4];
 uint32_t debug_count3[4];
@@ -78,49 +41,54 @@ static inline void debug_ptr(uint32_t point) {
 	debug_flag = debug_flag | (0x1 << point);
 }
 
-uint8_t try_read_data(uint8_t* dest, uint32_t buffer_id, uint32_t bytes, uint32_t offset) {
-	if (ptrc_abs_rpt[buffer_id] + (bytes + offset) > ptrc_abs_wpt[buffer_id])
+volatile struct debugger __attribute__((section(".dbg_mem_zone"))) dbg = {0};
+
+uint32_t try_read_data(uint8_t* dest, uint32_t bytes) {
+	if (virtual_read_failed) {
+		report("PAUSED, repeated call to try_read_data when virtual_read_failed");
+		while(1);
+	}
+
+	if (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > ptrc_abs_wpt[current_buffer_id]) {
+		virtual_read_failed = 1;
 		return 0;
+	}
 
 	uint32_t read;
-	uint32_t* buffer = ptrc_buf[buffer_id];
 
 	for (read = 0; read < bytes; ++read) {
-		dest[read] = buffer[(ptrc_abs_rpt[buffer_id] + offset + read) % (PTRC_BUFFER_SIZE / 4)];
+		dest[read] = ptrc_buf[current_buffer_id][(ptrc_abs_rpt[current_buffer_id] + virtual_offset + read) % (PTRC_BUFFER_SIZE / 4)];
 	}
+
+	virtual_offset = virtual_offset + read;
 
 	return read;
 }
 
-void inc_buffer_rpt(uint32_t buffer_id, uint32_t func_result, uint8_t header_offset) {
-	if (func_result > 0)
-		ptrc_abs_rpt[buffer_id] = ptrc_abs_rpt[buffer_id] + func_result + header_offset;
+void apply_virtual_offset() {
+	ptrc_abs_rpt[current_buffer_id] = ptrc_abs_rpt[current_buffer_id] + virtual_offset;
 }
 
-uint32_t handle_exc_or_shortaddr(uint32_t buffer_id) {
+void handle_exc_or_shortaddr() {
 	uint8_t payload;
 
-	if (try_read_data(&payload, buffer_id, 1, 1) == 0)
-		return 0;
+	if (try_read_data(&payload, 1) == 0)
+		return;
 
 	if ((payload >> 7) == 1) {
-		if (try_read_data(&payload, buffer_id, 1, 2) == 0)
-			return 0;
-
-		return 2;
+		if (try_read_data(&payload, 1) == 0)
+			return;
 	}
-
-	return 1;
 }
 
-uint32_t handle_longaddress(uint32_t buffer_id, uint8_t header) {
+void handle_longaddress(uint8_t header) {
 	uint8_t payload[8];
 	uint64_t address;
 
 	switch (header) {
 		case LongAddress0:
-			if (try_read_data(&payload, buffer_id, 8, 1) == 0)
-				return 0;
+			if (try_read_data(&payload[0], 8) == 0)
+				return;
 
 			address = 0;
 			address = address | (((uint64_t) payload[0] & 0x7f) << 2) |
@@ -129,30 +97,27 @@ uint32_t handle_longaddress(uint32_t buffer_id, uint8_t header) {
 				(((uint64_t)payload[4]) << 32) | (((uint64_t)payload[5]) << 40) |
 				(((uint64_t)payload[6]) << 48) | (((uint64_t)payload[7]) << 56);
 
-			debug_count2[buffer_id]++;
-			if (in_range[buffer_id]) {
-				debug_count3[buffer_id]++;
-				in_range[buffer_id] = 0;
+			debug_count2[current_buffer_id]++;
+			if (in_range[current_buffer_id]) {
+				debug_count3[current_buffer_id]++;
+				in_range[current_buffer_id] = 0;
 			}
 
-			return 8;
 			break;
 		case LongAddress1:
-			if (try_read_data(&payload, buffer_id, 8, 1) == 0)
-				return 0;
+			if (try_read_data(&payload[0], 8) == 0)
+				return;
 
 			debug_ptr(31);
 
-			return 8;
 			break;
 		case LongAddress3:
 		case LongAddress2:
-			if (try_read_data(&payload, buffer_id, 4, 1) == 0)
-				return 0;
+			if (try_read_data(&payload[0], 4) == 0)
+				return;
 
 			debug_ptr(30);
 
-			return 4;
 			break;
 		default:
 			debug_ptr(26);
@@ -161,58 +126,47 @@ uint32_t handle_longaddress(uint32_t buffer_id, uint8_t header) {
 	}
 }
 
-uint32_t handle_context(uint32_t buffer_id, uint8_t header, uint32_t handle_longaddr_offset) {
+void handle_context(uint8_t header) {
 	uint8_t context_info, vmid;
-	uint32_t contextid;
-
-	uint32_t vmid_read = 0;
-	uint32_t contextid_read = 0;
+	uint8_t contextid[4];
 
 	if ((header & 0x1) == 0) {
 		debug_ptr(29);
 		report("PAUSED, handle_context (header & 0x1) == 0");
 		while(1);
 	} else {
-		if (try_read_data(&context_info, buffer_id, 1, handle_longaddr_offset + 1) == 0)
-			return 0;
+		if (try_read_data(&context_info, 1) == 0)
+			return;
 
 		if (((context_info >> 6) & 1) == 1) {
-			vmid_read = try_read_data(&vmid, buffer_id, 1, handle_longaddr_offset + 2);
-
-			if (vmid_read == 0)
-				return 0;
+			if (try_read_data(&vmid, 1) == 0)
+				return;
 
 			debug_ptr(5);
 		}
 
 		if ((context_info >> 7) == 1) {
-			contextid_read = try_read_data(&contextid, buffer_id, 4, handle_longaddr_offset + vmid_read + 2);
-
-			if (contextid_read == 0)
-				return 0;
+			if (try_read_data(&contextid[0], 4) == 0)
+				return;
 
 			debug_ptr(6);
 		}
-
-		return 1 + vmid_read + contextid_read;
 	}
 }
 
-uint32_t handle_addrwithcontext(uint32_t buffer_id, uint8_t header) {
-	uint32_t handle_longaddress_offset, handle_context_offset;
-
+void handle_addrwithcontext(uint8_t header) {
 	switch (header) {
 		case AddrWithContext0:
-			handle_longaddress_offset = handle_longaddress(buffer_id, LongAddress3);
+			handle_longaddress(LongAddress3);
 			break;
 		case AddrWithContext1:
-			handle_longaddress_offset = handle_longaddress(buffer_id, LongAddress2);
+			handle_longaddress(LongAddress2);
 			break;
 		case AddrWithContext2:
-			handle_longaddress_offset = handle_longaddress(buffer_id, LongAddress0);
+			handle_longaddress(LongAddress0);
 			break;
 		case AddrWithContext3:
-			handle_longaddress_offset = handle_longaddress(buffer_id, LongAddress1);
+			handle_longaddress(LongAddress1);
 			break;
 		default:
 			debug_ptr(25);
@@ -220,31 +174,25 @@ uint32_t handle_addrwithcontext(uint32_t buffer_id, uint8_t header) {
 			while(1);
 	}
 
-	if (handle_longaddress_offset == 0)
-		return 0;
+	if (virtual_read_failed)
+		return;
 
-	handle_context_offset = handle_context(buffer_id, Context1, handle_longaddress_offset);
-
-	if (handle_context_offset == 0)
-		return 0;
-
-	return handle_longaddress_offset + handle_context_offset;
+	handle_context(Context1);
 }
 
-void handle_buffer(uint32_t buffer_id) {
+void handle_buffer(void) {
 	uint8_t header;
 
-	if (try_read_data(&header, buffer_id, 1, 0) == 0)
+	if (try_read_data(&header, 1) == 0)
 		return;
 
 	switch (header) {
 		case TraceOn:
-			inc_buffer_rpt(buffer_id, 1, 0); // No function call, only account for header
-
-			in_range[buffer_id] = 1;
-			debug_count1[buffer_id]++;
+			in_range[current_buffer_id] = 1;
+			debug_count1[current_buffer_id]++;
 
 			debug_ptr(0);
+			dbg.select = 1 << 0;
 
 			break;
 
@@ -252,46 +200,51 @@ void handle_buffer(uint32_t buffer_id) {
 		case AddrWithContext1:
 		case AddrWithContext2:
 		case AddrWithContext3:
-			inc_buffer_rpt(buffer_id, handle_addrwithcontext(buffer_id, header), 1);
+			handle_addrwithcontext(header);
 
 			debug_ptr(1);
 
+			dbg.select = 1 << 1;
 			break;
 
 		case ShortAddr0:
 		case ShortAddr1:
 		case Exce:
-			inc_buffer_rpt(buffer_id, handle_exc_or_shortaddr(buffer_id), 1);
+			handle_exc_or_shortaddr();
 
 			debug_ptr(2);
+
+			dbg.select = 1 << 2;
 
 			break;
 
 		case Async:
-			inc_buffer_rpt(buffer_id, 11, 1);
+			virtual_offset += 11;
 
 			debug_ptr(3);
 
+			dbg.select = 1 << 3;
 			break;
 		case LongAddress0:// Long Address with 8B payload
 		case LongAddress1:
-			inc_buffer_rpt(buffer_id, 8, 1);
+			virtual_offset += 8;
 
 			debug_ptr(4);
 
+			dbg.select = 1 << 4;
 			break;
 		case LongAddress2:// Long Address with 4B payload
 		case LongAddress3:
-			inc_buffer_rpt(buffer_id, 4, 1);
+			virtual_offset += 4;
 
 			debug_ptr(5);
-
+			dbg.select = 1 << 5;
 			break;
 		case TraceInfo:
-			inc_buffer_rpt(buffer_id, 2, 1);
+			virtual_offset += 2;
 
 			debug_ptr(6);
-
+			dbg.select = 1 << 6;
 			break;
 
 		case Atom10:
@@ -301,15 +254,16 @@ void handle_buffer(uint32_t buffer_id) {
 		case Event1:
 		case Event2:
 		case Event3:
-			inc_buffer_rpt(buffer_id, 1, 0); // No function call, only account for header
-
 			debug_ptr(7);
-
+			dbg.select = 1 << 7;
 			break;
 
 		default:
+			dbg.vals[0] = ptrc_abs_wpt[0];
+			dbg.vals[1] = ptrc_abs_rpt[0];
+			Xil_DCacheFlush(); // let me try to flush the whole thing. 
 			debug_ptr(21);
-			report("PAUSED, handle_buffer default case, buffer_id: %d, header: 0x%x", buffer_id, header);
+			report("PAUSED, handle_buffer default case, buffer_id: %d, header: 0x%x", current_buffer_id, header);
 			while(1);
 	}
 }
@@ -319,7 +273,15 @@ void regulator_loop(void) {
 
 	while (1) {
 		for (i = 0; i < 4; ++i) {
-			handle_buffer(i);
+			virtual_offset = 0;
+			virtual_read_failed = 0;
+			current_buffer_id = i;
+
+			handle_buffer();
+
+			if (virtual_read_failed == 0) {
+				apply_virtual_offset(); // TODO: probably this is why the r/w pts have gap btwn
+			}
 		}
 	}
 }
@@ -330,6 +292,11 @@ void reset(void) {
 	for (i = 0; i < 4; ++i) {
 		for (j = 0; j < PTRC_BUFFER_SIZE / 4; ++j)
 			ptrc_buf[i][j] = 0;
+
+		for (j = 0; j < TMG_BUFFER_SIZE / 4; ++j)
+			tmg_buf[i][j] = 0xFF;
+
+		dbg.tmg_ready = 0;
 
 		ptrc_abs_wpt[i] = 0;
 		ptrc_abs_rpt[i] = 0;
@@ -344,23 +311,53 @@ void reset(void) {
 	debug_flag = 0;
 }
 
-int main()
-{
+void process_tmg_buffer(void) {
+	while (dbg.tmg_ready == 0);
+
+	int i = 0, j;
+
+	for (i = 0; i < 4; ++i) {
+		uint32_t * buffer = (uint32_t*) &tmg_buf[i][0];
+		j = 2;
+
+		while (j < TMG_BUFFER_SIZE / 16) {
+			buffer[j] = buffer[j] + (uint32_t) &buffer[0];
+
+			j += 2;
+
+			if (buffer[j] == 0xFFFFFFFF) {
+				j += 3;
+
+				if (j >= TMG_BUFFER_SIZE / 16 || buffer[j] == 0xFFFFFFFF)
+					break;
+			}
+		}
+	}
+}
+
+int main() {
     init_platform();
 
     sleep(2);
-    report("Started (Not idle Regulator 1.0)");
+    report("Started (Regulator 1.00002)");
 
     reset();
 
-    report("Reset completed, starting loop");
-    report("ptrc_buf address: 0x%x", ptrc_buf);
+    report("Reset completed. Ready to load TMG buffer");
+
+    process_tmg_buffer();
+
+    report("TMG Buffer Loaded. Starting loop");
+    report("ptrc_buf     address: 0x%x", ptrc_buf);
     report("ptrc_abs_wpt address: 0x%x", ptrc_abs_wpt);
     report("ptrc_abs_rpt address: 0x%x", ptrc_abs_rpt);
+    report("dbg          address: 0x%x", &dbg);
     report("debug_count1 address: 0x%x", debug_count1);
     report("debug_count2 address: 0x%x", debug_count2);
     report("debug_count3 address: 0x%x", debug_count3);
-    report("debug_flag address: 0x%x", &debug_flag);
+    report("debug_flag   address: 0x%x", &debug_flag);
+    report("virtual offset      : 0x%x", &virtual_offset);
+    report("virtual_read_failed : 0x%x", &virtual_read_failed);
 
     debug_ptr(13);
 

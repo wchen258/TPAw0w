@@ -61,14 +61,14 @@ static inline void debug_ptr(uint32_t point) {
 	debug_flag = debug_flag | (0x1 << point);
 }
 
-uint32_t ptrc_buf_pointer_inc(uint32_t i) {
+uint32_t get_ptrc_buf_pointer(uint32_t i) {
 	uint32_t ptrc_buf_pointer_val = (ptrc_buf_pointer[i] % (PTRC_BUFFER_SIZE / 4));
-	ptrc_buf_pointer[i] = ptrc_buf_pointer[i] + 1;
+	// ptrc_buf_pointer[i] = ptrc_buf_pointer[i] + 1;
 
 	if (ptrc_buf_pointer[i] >= (PTRC_BUFFER_SIZE / 4)) {
 		debug_ptr(13);
-		report("ptrc_buf_pointer_inc wrap around pause\n");
-		while(1);
+		//report("get_ptrc_buf_pointer wrap around pause\n");
+		//while(1);
 	}
 
 	return ptrc_buf_pointer_val;
@@ -89,9 +89,12 @@ void proc_frame(uint8_t* frame_buf, uint8_t* cur_id) {
             }
 
             if (*cur_id != 0) {
-            	ptrc_buf[*cur_id - 1][ptrc_buf_pointer_inc(*cur_id - 1)] = frame_buf[i*2 + 1];
+            	ptrc_buf[*cur_id - 1][get_ptrc_buf_pointer(*cur_id - 1)] = frame_buf[i*2 + 1];
+				ptrc_buf_pointer[*cur_id - 1] ++;
             } else {
-            	debug_ptr(15);
+            	// debug_ptr(15);
+				report("ID0\n");
+				while(1);
             }
 
             *cur_id = (frame_buf[i*2] & 0xfe) >> 1;
@@ -100,24 +103,33 @@ void proc_frame(uint8_t* frame_buf, uint8_t* cur_id) {
             *cur_id = (frame_buf[i*2] & 0xfe) >> 1;
             if(i != 7) {
             	if (*cur_id != 0) {
-            		ptrc_buf[*cur_id - 1][ptrc_buf_pointer_inc(*cur_id - 1)] = frame_buf[i*2 + 1];
+            		ptrc_buf[*cur_id - 1][get_ptrc_buf_pointer(*cur_id - 1)] = frame_buf[i*2 + 1];
+					ptrc_buf_pointer[*cur_id - 1] ++;
             	} else {
             		debug_ptr(16);
+				report("ID0\n");
+				while(1);
             	}
             }
         } else {
             // Data byte
             uint8_t dat = (frame_buf[i*2] & 0xfe) | ((aux & (0x1 << i)) >> i);
             if (*cur_id != 0) {
-            	ptrc_buf[*cur_id - 1][ptrc_buf_pointer_inc(*cur_id - 1)] = dat;
+            	ptrc_buf[*cur_id - 1][get_ptrc_buf_pointer(*cur_id - 1)] = dat;
+				ptrc_buf_pointer[*cur_id - 1] ++;
             } else {
             	debug_ptr(17);
+				report("ID0\n");
+				while(1);
             }
             if(i != 7) {
             	if (*cur_id != 0) {
-            		ptrc_buf[*cur_id - 1][ptrc_buf_pointer_inc(*cur_id - 1)] = frame_buf[i*2 + 1];
+            		ptrc_buf[*cur_id - 1][get_ptrc_buf_pointer(*cur_id - 1)] = frame_buf[i*2 + 1];
+					ptrc_buf_pointer[*cur_id - 1] ++;
             	} else {
             		debug_ptr(18);
+				report("ID0\n");
+				while(1);
             	}
             }
         }
@@ -174,7 +186,7 @@ int main()
     init_platform();
 
     xil_printf("\n\r\n\r");
-    report("Started (Deformatter 1.0)");
+    report("Started (Deformatter 1.00001)");
 
     reset();
 
