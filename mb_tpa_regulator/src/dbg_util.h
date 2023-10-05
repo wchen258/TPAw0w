@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-#define SET(x, y) ((x) |= (1 << (y)))
 
 struct debugger {
 	uint32_t select;

@@ -10,6 +10,8 @@
 #include "tmg_monitor.h"
 #include "common.h"
 
+
+
 void regulator_loop(void) {
 	uint8_t i;
 
