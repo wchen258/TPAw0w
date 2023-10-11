@@ -4,8 +4,6 @@
 #include "dbg_util.h"
 #include "xtime_l.h"
 
-static XTime etm_off, etm_resume;
-
 static uint32_t etm_ctrl_addrs[] = {
     CS_BASE + A53_0_ETM + TRCPRGCTLR, 
     CS_BASE + A53_1_ETM + TRCPRGCTLR, 
@@ -63,31 +61,38 @@ static uint32_t etm_acvr_addrs[][8] = {
     },
 };
 
+
 /*  enabling is non-blocking. It returns even when ETM is not on yet.
     This should cause no problem. Since ETM would be on shortly
     uncomment the whle(CHECK) loop to make it blocking
 */
 void etm_enable(uint8_t id) {
-    volatile uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
+    uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
 //    uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
     SET(*ctrl, 0);
     //while(CHECK(*stat, 0) == 1);
-
-    XTime_GetTime(&etm_resume);
-
-    dbg.etm_inside_disable_timer = (etm_resume - etm_off) / COUNTS_PER_USECOND;
 }
 
 /*  Disable is blocking. ETM has to be in off-ready state to be programmed */
 void etm_disable(uint8_t id) {
     volatile uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
     volatile uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
-
-    XTime_GetTime(&etm_off);
-
     CLEAR(*ctrl, 0);
     while(CHECK(*stat, 0) == 0);
 }
+
+//static volatile uint8_t *prog_ctrl = CS_BASE + A53_0_ETM + TRCPRGCTLR;
+//static volatile uint8_t *trace_status = CS_BASE + A53_0_ETM + TRCSTATR;
+//void etm_disable(uint8_t dummy) {
+//	XTime start, end;
+//	*prog_ctrl = 0x0;
+//	XTime_GetTime(&start);
+//	while (!(*trace_status & 0x1));
+//	XTime_GetTime(&end);
+//	dbg.etm_inside_disable_timer = (end - start) / COUNTS_PER_USECOND;
+//	dbg.vals[0] = 0xdeadbeef;
+//}
+
 
 /*  only used when ETM in off-ready state. */
 static void etm_write_acvr(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
@@ -102,11 +107,11 @@ void etm_write_acvr_pair(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
 }
 
 void etr_enable() {
-	volatile uint32_t * ctrl = (uint32_t *) (CS_BASE + TMC3 + CTL);
+	uint32_t * ctrl = (uint32_t *) (CS_BASE + TMC3 + CTL);
 	*ctrl = 1;
 }
 
 void etr_disable() {
-	volatile uint32_t * ctrl = (uint32_t *) (CS_BASE + TMC3 + CTL);
+	uint32_t * ctrl = (uint32_t *) (CS_BASE + TMC3 + CTL);
 	*ctrl = 0;
 }

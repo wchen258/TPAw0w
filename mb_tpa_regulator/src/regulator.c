@@ -16,9 +16,10 @@ void regulator_loop(void) {
 	uint8_t i;
 
 	while (1) {
-		for (i = 0; i < 4; ++i) {
-			handle_buffer(i);
-			handle_hit(i);
+//		for (i = 0; i < 4; ++i) {
+		for (i = 0; i < 1; ++i) {
+			//handle_buffer(i);
+			//handle_hit(i);
 		}
 	}
 }
@@ -37,7 +38,7 @@ int main() {
     init_platform();
 
     sleep(2);
-    report("Started (Regulator 1.00004.5)");
+    report("Started (Regulator 1.00007.2)");
     report("dbg          address: 0x%x", &dbg);
 
     reset();

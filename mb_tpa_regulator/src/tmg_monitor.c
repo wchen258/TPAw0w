@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include "tmg_monitor.h"
+#include "coresight_lib.h"
 #include "dbg_util.h"
+#include "xtime_l.h"
 
 static volatile uint8_t tmg_buf[4][TMG_BUFFER_SIZE / 4] __attribute__((section(".tmg_mem_zone")));
 
@@ -18,29 +20,44 @@ typedef struct {
 } __attribute__((packed)) milestone;
 
 static milestone * ms_under_monitor[4];
-
-
-// ETM_CONTROLS START
-
-void etm_disable(uint8_t core_id) {
-}
-
-void etm_enable(uint8_t core_id) {
-}
-
-void set_addr_cmp(uint8_t core_id, uint32_t address, int pair_id) {
-}
-
-// ETM_CONTROLS END
-
-
-
+static milestone ms_fake_parent[4];
 
 void report_address_hit(uint8_t id, uint32_t address) {
     reported_hit[id] = address;
 }
 
-static set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * new_ms) {
+//void handle_hit(uint8_t id) {
+//    if (reported_hit[id] == 0)
+//        return;
+//
+//    XTime start, end;
+//
+//    if (reported_hit[id] == 0x404620) {
+//    	XTime_GetTime(&start);
+//
+//    	etm_disable(id);
+//    	etm_write_acvr_pair(id, 0, 0x4047A8);
+//    	// etr_enable();
+//    	etm_enable(id);
+//
+//
+//
+//    	XTime_GetTime(&end);
+//
+//    	dbg.vals[3] = (end - start) / COUNTS_PER_USECOND;
+//
+//    	reported_hit[id] = 0;
+//    } else if (reported_hit[id] == 0x4047A8) {
+//    	etm_disable(id);
+//    	etm_write_acvr_pair(id, 0, 0xCAFEEE);
+//    	etm_enable(id);
+//
+//    	reported_hit[id] = 0;
+//    }
+//}
+
+
+static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * new_ms) {
     //TODO: handle regulation logic
     
     uint8_t j, reached_last_child = 0;
@@ -51,13 +68,21 @@ static set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * n
             reached_last_child = 1;
             
         if (reached_last_child) {
-            set_addr_cmp(id, 0, j);
+        	dbg.assert = dbg.assert | 0b100;
+        	etm_write_acvr_pair(id, j, 0);
+
+        	dbg.current_monitoring[j] = 0;
         } else {
-            set_addr_cmp(id, ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address, j);
+        	dbg.assert = dbg.assert | 0b1000;
+        	etm_write_acvr_pair(id, j, ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address);
+
+        	dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
         }
     }
 
     etm_enable(id);
+
+    dbg.assert = dbg.assert | 0b10000;
 
     ms_under_monitor[id] = new_ms;
 }
@@ -71,9 +96,23 @@ void handle_hit(uint8_t id) {
     for (j = 0; j < 4 && ms_under_monitor[id]->children[j].offset != 0xFFFFFFFF; ++j) {
         milestone * child = (milestone *) &tmg_buf[id][ms_under_monitor[id]->children[j].offset];
 
-        if (child->address == reported_hit[id]) {
-            set_new_ms_under_monitor(id, ms_under_monitor[id]->children[j].nominal_time, child);
+        dbg.assert = dbg.assert | 0b1;
 
+        //report("%d, 0%x == 0%x\n\r", id, child->address, reported_hit[id]);
+
+        if (dbg.vals[1] == 0) {
+			dbg.vals[1] = id + 1;
+			dbg.vals[2] = child->address;
+			dbg.vals[3] = reported_hit[id];
+
+			if (reported_hit[id] == 0) {
+				dbg.fault = 0xFF23;
+			}
+		}
+
+        if (child->address == reported_hit[id]) {
+        	dbg.assert = dbg.assert | 0b10;
+            set_new_ms_under_monitor(id, ms_under_monitor[id]->children[j].nominal_time, child);
             break;
         }
     }
@@ -90,7 +129,18 @@ void reset_tmg_buf() {
 
 		reported_hit[i] = 0;
 
-		ms_under_monitor[i] = (milestone *) &tmg_buf[i][0];
+		//milestone * first_ms = (milestone *) &tmg_buf[i][0];
+		//milestone fake_parent = {};
+		//fake_parent.children[0].offset = 0;
+		//fake_parent.children[0].nominal_time = 0;
+		//fake_parent.children[1].offset = 0xFFFFFFFF;
+
+		//ms_under_monitor[i] = (milestone *) &tmg_buf[i][0];
+
+		ms_fake_parent[i].children[0].offset = 0;
+		ms_fake_parent[i].children[0].nominal_time = 0;
+		ms_fake_parent[i].children[1].offset = 0xFFFFFFFF;
+		ms_under_monitor[i] = &ms_fake_parent[i];
     }
 
     dbg.tmg_ready = 0;
@@ -101,7 +151,7 @@ void reset_tmg_buf() {
 }
 
 void report_tmg_mem() {
-    report("TMG MEMO GROUP START");
+    report("TMG MEMO GROUP START (2.7)");
     report("tmg_buf      address: 0x%x", tmg_buf);
 
     uint32_t i, j;

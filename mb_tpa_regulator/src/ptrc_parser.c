@@ -3,6 +3,7 @@
 #include "etm_pkt_headers.h"
 #include "tmg_monitor.h"
 #include "dbg_util.h"
+#include "xtime_l.h"
 
 // All 4 buffers are 4K in total, each buffer is 1K
 static volatile uint8_t ptrc_buf[4][PTRC_BUFFER_SIZE / 4] __attribute__((section(".ptrc_buf_zone")));
@@ -19,9 +20,14 @@ static uint32_t try_read_data(uint8_t* dest, uint32_t bytes) {
 		while(1);
 	}
 
-	if (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > ptrc_abs_wpt[current_buffer_id]) {
+	/*if (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > ptrc_abs_wpt[current_buffer_id]) {
 		virtual_read_failed = 1;
 		return 0;
+	}*/
+
+	uint32_t write_pointer = ptrc_abs_wpt[current_buffer_id];
+	while (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > write_pointer) {
+		write_pointer = ptrc_abs_wpt[current_buffer_id];
 	}
 
 	uint32_t read;
@@ -69,7 +75,7 @@ static void handle_longaddress(uint8_t header) {
 
 			if (in_range[current_buffer_id]) {
 				report_address_hit(current_buffer_id, address);
-
+				dbg.on_ct += 1;
 				in_range[current_buffer_id] = 0;
 			}
 
@@ -152,8 +158,17 @@ void handle_buffer(uint8_t buffer_id) {
 	    switch (header) {
 		    case TraceOn:
 			    in_range[current_buffer_id] = 1;
+			    if (dbg.vals[0] < 8) {
+			    	XTime trace_on_time;
+			    	XTime_GetTime(&trace_on_time);
+			    	dbg.trace_on_timings[dbg.vals[0]] = (trace_on_time / COUNTS_PER_USECOND);
+			    }
 
+			    if (dbg.vals[0] < 4)
+			    	dbg.traceon_frames[dbg.vals[0]] = ptrc_buf[1][(ptrc_abs_rpt[current_buffer_id]) % (PTRC_BUFFER_SIZE / 4)];
+			    dbg.vals[0] += 1;
 			    dbg.select = 1 << 0;
+
 			    break;
 
 		    case AddrWithContext0:
@@ -213,15 +228,16 @@ void handle_buffer(uint8_t buffer_id) {
 
 void reset_ptrc_buf(uint8_t buffer_id) {
     int j;
-	for (j = 0; j < PTRC_BUFFER_SIZE / 4; ++j)
+	for (j = 0; j < PTRC_BUFFER_SIZE / 4; ++j) {
 		ptrc_buf[buffer_id][j] = 0;
+	}
     ptrc_abs_rpt[buffer_id] = 0;
     ptrc_abs_wpt[buffer_id] = 0;
     in_range[buffer_id] = 0;
 }
 
 void report_ptrc_mem() {
-    report("PTRC MEMO GROUP START");
+    report("PTRC MEMO GROUP START (no-speculation, traceon framed)");
     report("ptrc_buf     address: 0x%x", ptrc_buf);
     report("ptrc_abs_wpt address: 0x%x", ptrc_abs_wpt);
     report("ptrc_abs_rpt address: 0x%x", ptrc_abs_rpt);
