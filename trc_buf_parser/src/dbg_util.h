@@ -18,6 +18,10 @@ struct debugger {
 	uint32_t max_fload_id;
 	uint32_t total_frames;
 	uint32_t fload_times[60];
+	uint32_t finter_times[60];
+	uint32_t total_read_fifo;
+	uint32_t fifo_read_tries;
+	uint32_t fifo_read_tries_after;
 };
 
 extern volatile struct debugger dbg;

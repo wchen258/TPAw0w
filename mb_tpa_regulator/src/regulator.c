@@ -18,7 +18,7 @@ void regulator_loop(void) {
 	while (1) {
 //		for (i = 0; i < 4; ++i) {
 		for (i = 0; i < 1; ++i) {
-			//handle_buffer(i);
+			handle_buffer(i);
 			//handle_hit(i);
 		}
 	}
