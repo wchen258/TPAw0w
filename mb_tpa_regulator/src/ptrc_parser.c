@@ -1,9 +1,10 @@
 #include <stdint.h>
 #include "ptrc_parser.h"
 #include "etm_pkt_headers.h"
-#include "tmg_monitor.h"
 #include "dbg_util.h"
 #include "xtime_l.h"
+
+#include "tmg_monitor.h"
 
 // All 4 buffers are 4K in total, each buffer is 1K
 static volatile uint8_t ptrc_buf[4][PTRC_BUFFER_SIZE / 4] __attribute__((section(".ptrc_buf_zone")));
@@ -17,18 +18,24 @@ static uint8_t in_range[4];
 static uint32_t try_read_data(uint8_t* dest, uint32_t bytes) {
 	if (virtual_read_failed) {
 		report("PAUSED, repeated call to try_read_data when virtual_read_failed");
+		SET(dbg.fault, 0);
 		while(1);
 	}
 
-	/*if (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > ptrc_abs_wpt[current_buffer_id]) {
+	if (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > ptrc_abs_wpt[current_buffer_id]) {
 		virtual_read_failed = 1;
 		return 0;
-	}*/
+	}
 
+
+	/*
 	uint32_t write_pointer = ptrc_abs_wpt[current_buffer_id];
 	while (ptrc_abs_rpt[current_buffer_id] + (bytes + virtual_offset) > write_pointer) {
+		dbg.vals[3]++;
 		write_pointer = ptrc_abs_wpt[current_buffer_id];
 	}
+	*/
+
 
 	uint32_t read;
 
@@ -93,6 +100,7 @@ static void handle_longaddress(uint8_t header) {
 			break;
 		default:
 			report("PAUSED, handle_longaddress default case");
+			SET(dbg.fault, 1);
 			while(1);
 	}
 }
@@ -103,6 +111,7 @@ static void handle_context(uint8_t header) {
 
 	if ((header & 0x1) == 0) {
 		report("PAUSED, handle_context (header & 0x1) == 0");
+		SET(dbg.fault, 2);
 		while(1);
 	} else {
 		if (try_read_data(&context_info, 1) == 0)
@@ -136,6 +145,7 @@ static void handle_addrwithcontext(uint8_t header) {
 			break;
 		default:
 			report("PAUSED, handle_addrwithcontext default case");
+			SET(dbg.fault, 3);
 			while(1);
 	}
 
@@ -158,7 +168,8 @@ void handle_buffer(uint8_t buffer_id) {
 	    switch (header) {
 		    case TraceOn:
 			    in_range[current_buffer_id] = 1;
-			    if (dbg.vals[0] < 8) {
+
+			    /*if (dbg.vals[0] < 8) {
 			    	XTime trace_on_time;
 			    	XTime_GetTime(&trace_on_time);
 			    	dbg.trace_on_timings[dbg.vals[0]] = (trace_on_time / COUNTS_PER_USECOND);
@@ -166,6 +177,7 @@ void handle_buffer(uint8_t buffer_id) {
 
 			    if (dbg.vals[0] < 4)
 			    	dbg.traceon_frames[dbg.vals[0]] = ptrc_buf[1][(ptrc_abs_rpt[current_buffer_id]) % (PTRC_BUFFER_SIZE / 4)];
+			    */
 			    dbg.vals[0] += 1;
 			    dbg.select = 1 << 0;
 
@@ -188,7 +200,8 @@ void handle_buffer(uint8_t buffer_id) {
 
 		    case Async:
 			    virtual_offset += 11;
-			    dbg.select = 1 << 3;
+			    dbg.trace_on_timings[1] = 0xF00C;
+			    dbg.trace_on_timings[2]++;
 			    break;
 		    case LongAddress0:// Long Address with 8B payload
 		    case LongAddress1:
@@ -216,6 +229,8 @@ void handle_buffer(uint8_t buffer_id) {
 			    break;
 
 		    default:
+		    	SET(dbg.fault, 4);
+		    	dbg.trace_on_timings[0] = header;
 			    report("PAUSED, handle_buffer default case, buffer_id: %d, header: 0x%x", current_buffer_id, header);
 			    while(1);
 	    }

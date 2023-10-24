@@ -9,3 +9,4 @@ void reset_tmg_buf(void);
 void report_tmg_mem(void);
 
 #endif // TMG_MONITOR_H
+

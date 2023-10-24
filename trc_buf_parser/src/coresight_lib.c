@@ -106,12 +106,3 @@ void etm_write_acvr_pair(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
     etm_write_acvr(id, 2 * ac_id + 1, addr_val);
 }
 
-void etr_enable() {
-	uint32_t * ctrl = (uint32_t *) (CS_BASE + TMC3 + CTL);
-	*ctrl = 1;
-}
-
-void etr_disable() {
-	uint32_t * ctrl = (uint32_t *) (CS_BASE + TMC3 + CTL);
-	*ctrl = 0;
-}

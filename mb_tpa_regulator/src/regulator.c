@@ -7,8 +7,8 @@
 #include "dbg_util.h"
 #include "xil_cache.h"
 #include "ptrc_parser.h"
-#include "tmg_monitor.h"
 #include "common.h"
+#include "tmg_monitor.h"
 
 
 
@@ -16,10 +16,9 @@ void regulator_loop(void) {
 	uint8_t i;
 
 	while (1) {
-//		for (i = 0; i < 4; ++i) {
-		for (i = 0; i < 1; ++i) {
+		for (i = 0; i < 4; ++i) {
 			handle_buffer(i);
-			//handle_hit(i);
+			handle_hit(i);
 		}
 	}
 }

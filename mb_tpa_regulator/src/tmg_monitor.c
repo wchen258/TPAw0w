@@ -26,37 +26,6 @@ void report_address_hit(uint8_t id, uint32_t address) {
     reported_hit[id] = address;
 }
 
-//void handle_hit(uint8_t id) {
-//    if (reported_hit[id] == 0)
-//        return;
-//
-//    XTime start, end;
-//
-//    if (reported_hit[id] == 0x404620) {
-//    	XTime_GetTime(&start);
-//
-//    	etm_disable(id);
-//    	etm_write_acvr_pair(id, 0, 0x4047A8);
-//    	// etr_enable();
-//    	etm_enable(id);
-//
-//
-//
-//    	XTime_GetTime(&end);
-//
-//    	dbg.vals[3] = (end - start) / COUNTS_PER_USECOND;
-//
-//    	reported_hit[id] = 0;
-//    } else if (reported_hit[id] == 0x4047A8) {
-//    	etm_disable(id);
-//    	etm_write_acvr_pair(id, 0, 0xCAFEEE);
-//    	etm_enable(id);
-//
-//    	reported_hit[id] = 0;
-//    }
-//}
-
-
 static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * new_ms) {
     //TODO: handle regulation logic
     
@@ -64,9 +33,10 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
     etm_disable(id);
 
     for (j = 0; j < 4; ++j) {
-        if (new_ms->children[j].offset == 0xFFFFFFFF)
+        if (new_ms->children[j].offset == 0xFFFFFFFF) {
             reached_last_child = 1;
-            
+        }
+
         if (reached_last_child) {
         	dbg.assert = dbg.assert | 0b100;
         	etm_write_acvr_pair(id, j, 0);
@@ -80,6 +50,8 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
         }
     }
 
+    dbg.ms_updates[id]++;
+
     etm_enable(id);
 
     dbg.assert = dbg.assert | 0b10000;
@@ -88,7 +60,7 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
 }
 
 void handle_hit(uint8_t id) {
-    if (reported_hit[id] == 0)
+    if (reported_hit[id] == 0 || reported_hit[id] == ms_under_monitor[id]->address)
         return;
 
     uint32_t j = 0;
@@ -111,7 +83,10 @@ void handle_hit(uint8_t id) {
 		}
 
         if (child->address == reported_hit[id]) {
-        	dbg.assert = dbg.assert | 0b10;
+        	dbg.traceon_frames[0]++;
+
+
+
             set_new_ms_under_monitor(id, ms_under_monitor[id]->children[j].nominal_time, child);
             break;
         }

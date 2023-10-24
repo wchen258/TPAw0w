@@ -52,7 +52,7 @@
 
 #define TMCTRG 0x01C
 #define FFCR 0x304
-#define CTL 0x20
+#define CTL 0x020
 
 /* Trace Memory Controller (TMC) register group  end */
 

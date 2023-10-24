@@ -153,8 +153,6 @@ Usage:
 void etm_enable(uint8_t id);
 void etm_disable(uint8_t id);
 void etm_write_acvr_pair(uint8_t id, uint8_t ac_id, uint32_t addr_val);
-void etr_disable(void);
-void etr_enable(void);
 
 
 

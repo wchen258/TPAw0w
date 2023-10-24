@@ -11,6 +11,7 @@ struct debugger {
 	uint32_t etm_inside_disable_timer;
 	uint32_t fffe_capture[8];
 	uint32_t man_flush_ct;
+	uint32_t man_flush_finished;
 	uint32_t id_zero_ct;
 	uint32_t id_other_ct;
 	uint32_t max_fload_time;
