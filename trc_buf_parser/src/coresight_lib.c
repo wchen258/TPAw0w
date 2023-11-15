@@ -66,20 +66,25 @@ static uint32_t etm_acvr_addrs[][8] = {
     This should cause no problem. Since ETM would be on shortly
     uncomment the whle(CHECK) loop to make it blocking
 */
+
+/*
 void etm_enable(uint8_t id) {
     uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
 //    uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
     SET(*ctrl, 0);
     //while(CHECK(*stat, 0) == 1);
 }
+*/
 
 /*  Disable is blocking. ETM has to be in off-ready state to be programmed */
+/*
 void etm_disable(uint8_t id) {
     volatile uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
     volatile uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
     CLEAR(*ctrl, 0);
     while(CHECK(*stat, 0) == 0);
 }
+*/
 
 //static volatile uint8_t *prog_ctrl = CS_BASE + A53_0_ETM + TRCPRGCTLR;
 //static volatile uint8_t *trace_status = CS_BASE + A53_0_ETM + TRCSTATR;

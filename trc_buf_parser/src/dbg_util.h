@@ -23,6 +23,8 @@ struct debugger {
 	uint32_t total_read_fifo;
 	uint32_t fifo_read_tries;
 	uint32_t fifo_read_tries_after;
+	uint32_t ctiacks[4];
+	uint32_t ctiacks_r5;
 };
 
 extern volatile struct debugger dbg;

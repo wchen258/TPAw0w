@@ -10,15 +10,17 @@
 #include "common.h"
 #include "tmg_monitor.h"
 
-
+uint8_t hit_last = 0;
 
 void regulator_loop(void) {
 	uint8_t i;
 
 	while (1) {
 		for (i = 0; i < 4; ++i) {
-			handle_buffer(i);
-			handle_hit(i);
+			if (((hit_last >> i) & 0b1) == 0) {
+				handle_buffer(i);
+				handle_hit(i);
+			}
 		}
 	}
 }
@@ -37,7 +39,7 @@ int main() {
     init_platform();
 
     sleep(2);
-    report("Started (Regulator 1.00007.2)");
+    report("Started (Regulator 1.00008.2)");
     report("dbg          address: 0x%x", &dbg);
 
     reset();

@@ -16,6 +16,8 @@ struct debugger {
 	uint32_t trace_on_timings[8];
 	uint32_t traceon_frames[4];
 	uint32_t ms_updates[4];
+	uint32_t event;
+	uint32_t event_count[4][4];
 };
 
 extern volatile struct debugger dbg;

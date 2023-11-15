@@ -81,8 +81,8 @@ static void handle_longaddress(uint8_t header) {
 				(((uint64_t)payload[6]) << 48) | (((uint64_t)payload[7]) << 56);
 
 			if (in_range[current_buffer_id]) {
-				report_address_hit(current_buffer_id, address);
-				dbg.on_ct += 1;
+				//report_address_hit(current_buffer_id, address);
+				//dbg.on_ct += 1;
 				in_range[current_buffer_id] = 0;
 			}
 
@@ -179,7 +179,7 @@ void handle_buffer(uint8_t buffer_id) {
 			    	dbg.traceon_frames[dbg.vals[0]] = ptrc_buf[1][(ptrc_abs_rpt[current_buffer_id]) % (PTRC_BUFFER_SIZE / 4)];
 			    */
 			    dbg.vals[0] += 1;
-			    dbg.select = 1 << 0;
+			    dbg.select |= 1 << 0;
 
 			    break;
 
@@ -188,44 +188,67 @@ void handle_buffer(uint8_t buffer_id) {
 		    case AddrWithContext2:
 		    case AddrWithContext3:
 			    handle_addrwithcontext(header);
-			    dbg.select = 1 << 1;
+			    dbg.select |= 1 << 1;
 			    break;
 
 		    case ShortAddr0:
 		    case ShortAddr1:
 		    case Exce:
 			    handle_exc_or_shortaddr();
-			    dbg.select = 1 << 2;
+			    dbg.select |= 1 << 2;
 			    break;
 
 		    case Async:
 			    virtual_offset += 11;
 			    dbg.trace_on_timings[1] = 0xF00C;
 			    dbg.trace_on_timings[2]++;
+
+			    dbg.select |= 1 << 3;
 			    break;
 		    case LongAddress0:// Long Address with 8B payload
 		    case LongAddress1:
 			    virtual_offset += 8;
-			    dbg.select = 1 << 4;
+			    dbg.select |= 1 << 4;
 			    break;
 		    case LongAddress2:// Long Address with 4B payload
 		    case LongAddress3:
 			    virtual_offset += 4;
-			    dbg.select = 1 << 5;
+			    dbg.select |= 1 << 5;
 			    break;
 		    case TraceInfo:
 			    virtual_offset += 2;
-			    dbg.select = 1 << 6;
+			    dbg.select |= 1 << 6;
 			    break;
 
 		    case Atom10:
 		    case Atom11:
 		    case ExceReturn:
+		    	dbg.select |= 1 << 7;
+		    	break;
+
 		    case Event0:
+		    	dbg.event |= 0b1;
+		    	dbg.event_count[current_buffer_id][0]++;
+
+		    	report_event_hit(current_buffer_id, 0);
+			    break;
 		    case Event1:
+		    	dbg.event |= 0b10;
+		    	dbg.event_count[current_buffer_id][1]++;
+
+		    	report_event_hit(current_buffer_id, 1);
+			    break;
 		    case Event2:
+		    	dbg.event |= 0b100;
+		    	dbg.event_count[current_buffer_id][2]++;
+
+		    	report_event_hit(current_buffer_id, 2);
+			    break;
 		    case Event3:
-			    dbg.select = 1 << 7;
+		    	dbg.event |= 0b1000;
+		    	dbg.event_count[current_buffer_id][3]++;
+
+		    	report_event_hit(current_buffer_id, 3);
 			    break;
 
 		    default:

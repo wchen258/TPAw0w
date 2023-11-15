@@ -63,23 +63,42 @@ static uint32_t etm_acvr_addrs[][8] = {
     },
 };
 
+#define ETR_MAN_FLUSH_BIT    6
+volatile uint32_t* etr_ffcr = (volatile uint32_t*) (CS_BASE + TMC1 + FFCR);
+
+#define CHECK(x,y) (((x) & (1 << (y))) ? 1 : 0)
+
+/*
+static void etr_man_flush() {
+	*etr_ffcr |= (0x1 << ETR_MAN_FLUSH_BIT);
+	while(*etr_ffcr & (0x1 << ETR_MAN_FLUSH_BIT));
+}
+*/
+
 /*  enabling is non-blocking. It returns even when ETM is not on yet.
     This should cause no problem. Since ETM would be on shortly
     uncomment the whle(CHECK) loop to make it blocking
 */
 void etm_enable(uint8_t id) {
     volatile uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
-//    uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
+    volatile uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
+
     SET(*ctrl, 0);
-    //while(CHECK(*stat, 0) == 1);
+    while(CHECK(*stat, 0) == 1);
 
     XTime_GetTime(&etm_resume);
 
-    dbg.etm_inside_disable_timer = (etm_resume - etm_off) / COUNTS_PER_USECOND;
+    if (etm_resume > etm_off) {
+    	uint32_t new_time = (etm_resume - etm_off) / COUNTS_PER_USECOND;
+    	if (new_time > dbg.etm_inside_disable_timer)
+    		dbg.etm_inside_disable_timer = new_time;
+    }
 }
 
 /*  Disable is blocking. ETM has to be in off-ready state to be programmed */
 void etm_disable(uint8_t id) {
+	//etr_man_flush();
+
     volatile uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
     volatile uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
 
@@ -90,7 +109,7 @@ void etm_disable(uint8_t id) {
 }
 
 /*  only used when ETM in off-ready state. */
-static void etm_write_acvr(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
+void etm_write_acvr(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
     uint32_t *acvr = (uint32_t *) etm_acvr_addrs[id][ac_id];
     *acvr = addr_val;
 }

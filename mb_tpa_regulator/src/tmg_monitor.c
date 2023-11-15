@@ -22,29 +22,49 @@ typedef struct {
 static milestone * ms_under_monitor[4];
 static milestone ms_fake_parent[4];
 
+static uint32_t event_address_map[4][4];
+
+void report_event_hit(uint8_t id, uint8_t event) {
+	//etm_disable(id);
+	dbg.on_ct += 1;
+	reported_hit[id] = event_address_map[id][event];
+	//etm_enable(id);
+}
+
 void report_address_hit(uint8_t id, uint32_t address) {
     reported_hit[id] = address;
 }
+
+extern uint8_t hit_last;
 
 static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * new_ms) {
     //TODO: handle regulation logic
     
     uint8_t j, reached_last_child = 0;
+
     etm_disable(id);
 
     for (j = 0; j < 4; ++j) {
         if (new_ms->children[j].offset == 0xFFFFFFFF) {
             reached_last_child = 1;
+
+            if (j == 0)
+            	hit_last |= 0b1 << id;
         }
 
         if (reached_last_child) {
         	dbg.assert = dbg.assert | 0b100;
-        	etm_write_acvr_pair(id, j, 0);
+
+        	etm_write_acvr(id, 7 - j, 0);
+        	event_address_map[id][j] = 0;
 
         	dbg.current_monitoring[j] = 0;
         } else {
         	dbg.assert = dbg.assert | 0b1000;
-        	etm_write_acvr_pair(id, j, ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address);
+
+        	uint32_t addr = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
+        	etm_write_acvr(id, 7 - j, addr);
+        	event_address_map[id][j] = addr;
 
         	dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
         }
@@ -60,8 +80,14 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
 }
 
 void handle_hit(uint8_t id) {
-    if (reported_hit[id] == 0 || reported_hit[id] == ms_under_monitor[id]->address)
+    if (reported_hit[id] == 0) {
         return;
+    }
+
+    if (reported_hit[id] == ms_under_monitor[id]->address) {
+    	reported_hit[id] = 0;
+    	return;
+    }
 
     uint32_t j = 0;
 
@@ -83,9 +109,7 @@ void handle_hit(uint8_t id) {
 		}
 
         if (child->address == reported_hit[id]) {
-        	dbg.traceon_frames[0]++;
-
-
+        	dbg.traceon_frames[id]++;
 
             set_new_ms_under_monitor(id, ms_under_monitor[id]->children[j].nominal_time, child);
             break;
@@ -103,6 +127,8 @@ void reset_tmg_buf() {
 			tmg_buf[i][j] = 0xFF;
 
 		reported_hit[i] = 0;
+		event_address_map[i][0] = 0;
+		event_address_map[i][1] = 0;
 
 		//milestone * first_ms = (milestone *) &tmg_buf[i][0];
 		//milestone fake_parent = {};
@@ -123,6 +149,16 @@ void reset_tmg_buf() {
     report("tmg_buf reset, waiting for tmg graph");
 
     while(dbg.tmg_ready == 0);
+
+    for (i = 0; i < 4; ++i) {
+    	for (j = 0; j < 4; ++j)
+    		event_address_map[i][j] = 0;
+
+    	for (j = 0; j < 4 && ms_under_monitor[i]->children[j].offset != 0xFFFFFFFF; ++j) {
+    		milestone * child = (milestone *) &tmg_buf[i][ms_under_monitor[i]->children[j].offset];
+    		event_address_map[i][j] = child->address;
+    	}
+    }
 }
 
 void report_tmg_mem() {

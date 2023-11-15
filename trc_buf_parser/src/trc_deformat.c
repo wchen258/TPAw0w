@@ -88,6 +88,21 @@ volatile uint32_t* etr_rrd  = (volatile uint32_t*) (CS_BASE + TMC1 + RRD );
 
 volatile uint32_t* etr_cbuflevel = (volatile uint32_t*) (CS_BASE + TMC1 + CBUFLEVEL);
 
+volatile uint32_t* cti_intack = (volatile uint32_t*) (CS_BASE + R5_0_CTI + 0x010);
+volatile uint32_t* cti_trigoutstatus = (volatile uint32_t*) (CS_BASE + R5_0_CTI + 0x134);
+
+volatile uint32_t* a0_cti_intack = (volatile uint32_t*) (CS_BASE + A53_0_CTI + 0x010);
+volatile uint32_t* a0_cti_trigoutstatus = (volatile uint32_t*) (CS_BASE + A53_0_CTI + 0x134);
+
+volatile uint32_t* a1_cti_intack = (volatile uint32_t*) (CS_BASE + A53_1_CTI + 0x010);
+volatile uint32_t* a1_cti_trigoutstatus = (volatile uint32_t*) (CS_BASE + A53_1_CTI + 0x134);
+
+volatile uint32_t* a2_cti_intack = (volatile uint32_t*) (CS_BASE + A53_2_CTI + 0x010);
+volatile uint32_t* a2_cti_trigoutstatus = (volatile uint32_t*) (CS_BASE + A53_2_CTI + 0x134);
+
+volatile uint32_t* a3_cti_intack = (volatile uint32_t*) (CS_BASE + A53_3_CTI + 0x010);
+volatile uint32_t* a3_cti_trigoutstatus = (volatile uint32_t*) (CS_BASE + A53_3_CTI + 0x134);
+
 ///
 
 uint8_t flush_allowed = 1;
@@ -95,12 +110,44 @@ uint8_t flush_allowed = 1;
 XTime firsthword_time, lasthword_time;
 XTime frame_finished = 0, frame_started = 0;
 
+
 static void etr_man_flush() {
 	if(CHECK(etr_buffer_control, 0)) {
 		dbg.man_flush_finished++;
 		*etr_ffcr |= (0x1 << ETR_MAN_FLUSH_BIT);
 		while(*etr_ffcr & (0x1 << ETR_MAN_FLUSH_BIT));
 	}
+}
+
+
+
+static void check_ctitrigger_status() {
+	if (((*cti_intack >> 4) & 0b1) == 1) {
+		*cti_trigoutstatus |= (0b1 << 4);
+
+		//etr_man_flush();
+
+		dbg.ctiacks_r5++;
+	}
+
+	/*
+	if (((*a0_cti_trigoutstatus >> 3) & 0b1) == 1) {
+		*a0_cti_intack |= (0b1 << 3);
+		dbg.ctiacks[0]++;
+	}
+	if (((*a1_cti_trigoutstatus >> 3) & 0b1) == 1) {
+		*a1_cti_intack |= (0b1 << 3);
+		dbg.ctiacks[1]++;
+	}
+	if (((*a2_cti_trigoutstatus >> 3) & 0b1) == 1) {
+		*a2_cti_intack |= (0b1 << 3);
+		dbg.ctiacks[2]++;
+	}
+	if (((*a3_cti_trigoutstatus >> 3) & 0b1) == 1) {
+		*a3_cti_intack |= (0b1 << 3);
+		dbg.ctiacks[3]++;
+	}
+	*/
 }
 
 /*
@@ -373,11 +420,13 @@ static void read_word(uint32_t * output) {
 	do {
 		dbg.fifo_read_tries++;
 
-		while ((*etr_sts & 0x1) == 0) {
-			dbg.vals[6]++;
-		}
+		//while ((*etr_sts & 0x1) == 0) {
+		//	dbg.vals[6]++;
+		//}
 
-		etr_man_flush();
+		//etr_man_flush();
+
+		//check_ctitrigger_status();
 
 		word = *etr_rrd;
 
@@ -389,8 +438,8 @@ static void read_word(uint32_t * output) {
 				while(1);
 			}
 		} else if (word == 0xFFFFFFFF) {
-			etr_man_flush();
 			dbg.vals[4]++;
+			// etr_man_flush();
 			/*
 			etr_man_flush();
 			XTime cur_flush;
@@ -416,21 +465,22 @@ static void read_word(uint32_t * output) {
 	dbg.total_read_fifo++;
 
 
-	if (buffer_pointer < ETR_BUF_SIZE / 4)
-		etr_buffer[buffer_pointer++] = word;
+	//if (buffer_pointer < ETR_BUF_SIZE / 4)
+	//	etr_buffer[buffer_pointer++] = word;
 
 	*output = word;
 }
 
+/*
 void trace_loop(void) {
 	uint32_t frame[4];
 
 	while (etr_buffer_control == 0);
 
 	while(1) {
-		/*while ((*etr_sts & 0x1) == 0) {
-			dbg.vals[6]++;
-		}*/
+		//while ((*etr_sts & 0x1) == 0) {
+		//	dbg.vals[6]++;
+		//}
 
 		while (*etr_cbuflevel < 4) {
 			dbg.vals[6]++;
@@ -458,11 +508,20 @@ void trace_loop(void) {
 		dbg.total_frames++;
 	}
 }
+*/
 
-/*
 static uint32_t idzero_ignore = 0;
 
 void trace_loop(void) {
+	/*while (etr_buffer_control == 0);
+
+	while (etr_buffer_control) {
+		dbg.total_read_fifo++;
+		check_ctitrigger_status();
+
+		//uint32_t word = *etr_rrd;
+	}*/
+
 	uint32_t frame[4];
 
 	while (etr_buffer_control == 0);
@@ -473,19 +532,10 @@ void trace_loop(void) {
 		read_word(&frame[2]);
 		read_word(&frame[3]);
 
-		if (idzero_ignore == 1 && frame[0] == 0 && frame[1] == 0 && frame[2] == 0 && frame[3] == 0) {
-
-		} else if (frame[0] == 1 && frame[1] == 0 && frame[2] == 0 && frame[3] == 0) {
-			idzero_ignore = 1;
-		} else {
-			idzero_ignore = 0;
-			proc_frame((uint8_t*) &frame[0], &current_etm_id);
-		}
-
+		proc_frame((uint8_t*) &frame[0], &current_etm_id);
 		dbg.total_frames++;
 	}
 }
-*/
 
 /*
  * BY-PASS NO BUFFER, FIFO MODE, PROBABLY CORRECT IMPLEMENTATION
@@ -595,7 +645,7 @@ int main()
     init_platform();
 
     xil_printf("\n\r\n\r");
-    report("Started (Deformatter 1.1, Soft, FIFO)");
+    report("Started (Deformatter 1.2, Soft, FIFO)");
 
     reset();
 
