@@ -7,7 +7,7 @@
 struct debugger {
 	uint32_t fault;
 	uint32_t tmg_ready;
-	uint32_t select;
+	uint32_t hotreset;
 	uint32_t assert;
 	uint32_t sync_ct;
 	uint32_t on_ct;
@@ -19,8 +19,8 @@ struct debugger {
 	uint32_t ms_updates[4];
 	uint32_t event;
 	uint32_t event_count[4][4];
-	// XTime    milestone_timestamps[4][200];
-    uint64_t pmcc[4][100];
+	XTime    milestone_timestamps[4][200];
+    // uint64_t pmcc[4][100];
 	uint32_t ms_ts_pt[4];
 	// char log[1024];
 };

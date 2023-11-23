@@ -25,10 +25,10 @@ static milestone ms_fake_parent[4];
 static uint32_t event_address_map[4][4];
 
 void report_event_hit(uint8_t id, uint8_t event) {
-    // XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
-    dbg.pmcc[id][dbg.ms_ts_pt[id]] = read_pmu_cycle_counter();
+    XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
+    // dbg.pmcc[id][dbg.ms_ts_pt[id]] = read_pmu_cycle_counter();
     dbg.ms_ts_pt[id]++;
-	dbg.on_ct += 1;
+	// dbg.on_ct += 1;
 	reported_hit[id] = event_address_map[id][event];
 
 	// if (id == 1 && dbg.ms_ts_pt[id] > 60)

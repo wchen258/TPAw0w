@@ -16,6 +16,11 @@ void regulator_loop(void) {
 	uint8_t i;
 
 	while (1) {
+        if (dbg.hotreset) {
+            report("HOTRESET");
+            break;
+        }
+
 		for (i = 0; i < 4; ++i) {
 			if (((hit_last >> i) & 0b1) == 0) {
 				handle_buffer(i);
@@ -32,8 +37,9 @@ void reset(void) {
 		reset_ptrc_buf(i);
 	}
 
-	reset_tmg_buf();
+    hit_last = 0;
     reset_dbg_util();
+	reset_tmg_buf();
 }
 
 int main() {
@@ -47,12 +53,13 @@ int main() {
     // breport("T%d %x", 123, 0xdeadbeef);
     // report("breport testing finished");
 
-    reset();
-
-	report_ptrc_mem();
-	report_tmg_mem();
-
-    regulator_loop();
+    while(1) {
+        reset();
+	// report_ptrc_mem();
+	// report_tmg_mem();
+        regulator_loop();
+        report("regulator loop exits");
+    }
 
     cleanup_platform();
     return 0;

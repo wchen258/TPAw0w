@@ -4,10 +4,12 @@
 #include <stdint.h>
 
 /* Usage convention:
- * vals[0]: faulty assertion. Set bit to indicate an unintended behavior occur
+ * write 1 to hotreset cause the DEF to reset
+ * other registers have no constraint
  */
 struct debugger {
-	uint32_t vals[8];
+    uint32_t hotreset;
+	uint32_t vals[7];
 	uint32_t etm_inside_disable_timer;
 	uint32_t fffe_capture[8];
 	uint32_t man_flush_ct;
@@ -30,5 +32,6 @@ struct debugger {
 extern volatile struct debugger dbg;
 
 void report(const char* format, ... );
+void reset_dbg_util();
 
 #endif // DBG_UTIL_H
