@@ -6,6 +6,13 @@
 
 static XTime etm_off, etm_resume;
 
+static uint32_t pmu_cycle_counter_addrs[] = {
+    CS_BASE + A53_0_PMU + PMCCNTR_EL0, 
+    CS_BASE + A53_1_PMU + PMCCNTR_EL0, 
+    CS_BASE + A53_2_PMU + PMCCNTR_EL0, 
+    CS_BASE + A53_3_PMU + PMCCNTR_EL0, 
+};
+
 static uint32_t etm_ctrl_addrs[] = {
     CS_BASE + A53_0_ETM + TRCPRGCTLR, 
     CS_BASE + A53_1_ETM + TRCPRGCTLR, 
@@ -68,12 +75,12 @@ volatile uint32_t* etr_ffcr = (volatile uint32_t*) (CS_BASE + TMC1 + FFCR);
 
 #define CHECK(x,y) (((x) & (1 << (y))) ? 1 : 0)
 
-/*
+
 static void etr_man_flush() {
 	*etr_ffcr |= (0x1 << ETR_MAN_FLUSH_BIT);
 	while(*etr_ffcr & (0x1 << ETR_MAN_FLUSH_BIT));
 }
-*/
+
 
 /*  enabling is non-blocking. It returns even when ETM is not on yet.
     This should cause no problem. Since ETM would be on shortly
@@ -89,10 +96,13 @@ void etm_enable(uint8_t id) {
     XTime_GetTime(&etm_resume);
 
     if (etm_resume > etm_off) {
-    	uint32_t new_time = (etm_resume - etm_off) / COUNTS_PER_USECOND;
+    	// uint32_t new_time = (etm_resume - etm_off) / COUNTS_PER_USECOND;
+    	uint32_t new_time = (etm_resume - etm_off) ;
     	if (new_time > dbg.etm_inside_disable_timer)
     		dbg.etm_inside_disable_timer = new_time;
     }
+
+    etr_man_flush();
 }
 
 /*  Disable is blocking. ETM has to be in off-ready state to be programmed */
@@ -118,6 +128,21 @@ void etm_write_acvr(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
 void etm_write_acvr_pair(uint8_t id, uint8_t ac_id, uint32_t addr_val) {
     etm_write_acvr(id, 2 * ac_id, addr_val);
     etm_write_acvr(id, 2 * ac_id + 1, addr_val);
+}
+
+/* Read PMU cycle counter from A53_0_PMU
+ * ---------------------------
+ * due to RPU's bus width is 32-bit, the read has to be done
+ * by reading the two 32-bit registers separately and then combine them
+ * 
+ * Return: 64-bit cycle counter value
+*/
+uint64_t read_pmu_cycle_counter() {
+    uint32_t *pmu_cc_low = (uint32_t *) pmu_cycle_counter_addrs[0];
+    uint32_t *pmu_cc_high = (uint32_t *) (pmu_cycle_counter_addrs[0] + 4);
+    uint64_t pmu_cc = *pmu_cc_high;
+    pmu_cc = (pmu_cc << 32) | *pmu_cc_low;
+    return pmu_cc;
 }
 
 /*

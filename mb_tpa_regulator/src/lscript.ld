@@ -21,6 +21,8 @@ _UNDEF_STACK_SIZE = DEFINED(_UNDEF_STACK_SIZE) ? _UNDEF_STACK_SIZE : 1024;
 
 /* Define Memories in the system */
 
+/* 0x400 dbg_mem not enough 
+
 MEMORY
 {
    ddr4_0_C0_DDR4_ADDRESS_BLOCK : ORIGIN = 0x400000000, LENGTH = 0x10000000
@@ -33,6 +35,23 @@ MEMORY
    ptrc_buffer_pointer  : ORIGIN = 0x21000, LENGTH = 0x20
    dbg_mem  : ORIGIN = 0x21020, LENGTH = 0x400
    tmg_mem  : ORIGIN = 0x21420, LENGTH = 0x1000
+}
+
+end dbg_mem fix 
+*/
+
+MEMORY
+{
+   ddr4_0_C0_DDR4_ADDRESS_BLOCK : ORIGIN = 0x400000000, LENGTH = 0x10000000
+   psu_ocm_ram_0_MEM_0 : ORIGIN = 0xFFFC0000, LENGTH = 0x40000
+   psu_qspi_linear_0_MEM_0 : ORIGIN = 0xC0000000, LENGTH = 0x20000000
+   psu_r5_1_atcm_MEM_0 : ORIGIN = 0x0, LENGTH = 0x10000
+   psu_r5_1_btcm_MEM_0 : ORIGIN = 0x23020, LENGTH = 0xCFE0
+   psu_r5_ddr_0_MEM_0 : ORIGIN = 0x100000, LENGTH = 0x7FE00000
+   ptrc_buffer  : ORIGIN = 0x20000, LENGTH = 0x1000
+   ptrc_buffer_pointer  : ORIGIN = 0x21000, LENGTH = 0x20
+   dbg_mem  : ORIGIN = 0x21020, LENGTH = 0x1000
+   tmg_mem  : ORIGIN = 0x22020, LENGTH = 0x1000
 }
 
 /* Specify the default entry point to the program */

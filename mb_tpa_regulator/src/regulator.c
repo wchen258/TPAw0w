@@ -33,6 +33,7 @@ void reset(void) {
 	}
 
 	reset_tmg_buf();
+    reset_dbg_util();
 }
 
 int main() {
@@ -40,7 +41,11 @@ int main() {
 
     sleep(2);
     report("Started (Regulator 1.00008.2)");
-    report("dbg          address: 0x%x", &dbg);
+    report("dbg address: 0x%x", &dbg);
+
+    //breport("TestT");
+    // breport("T%d %x", 123, 0xdeadbeef);
+    // report("breport testing finished");
 
     reset();
 

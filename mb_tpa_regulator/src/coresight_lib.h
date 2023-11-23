@@ -138,6 +138,13 @@
 /* ETM register group END */
 
 
+/* Performance Monitor Unit group STARTS */
+#define PMCCNTR_EL0 0xF8
+
+/* Performance Monitor Unit group ENDS*/
+
+
+
 /*  
 ETM functional group 
 
@@ -154,6 +161,8 @@ void etm_enable(uint8_t id);
 void etm_disable(uint8_t id);
 void etm_write_acvr(uint8_t id, uint8_t ac_id, uint32_t addr_val);
 void etm_write_acvr_pair(uint8_t id, uint8_t ac_id, uint32_t addr_val);
+
+uint64_t read_pmu_cycle_counter() ;
 
 
 
