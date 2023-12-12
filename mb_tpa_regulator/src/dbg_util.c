@@ -20,9 +20,10 @@ void report(const char* format, ... ) {
 }
 
 static inline void write_to_log(char c) {
+	/*
 	if (log_ptr < 1023)
-    ;
-		// dbg.log[log_ptr++] = c;
+		dbg.log[log_ptr++] = c;
+		*/
 }
 
 void breport(const char* format, ...) {

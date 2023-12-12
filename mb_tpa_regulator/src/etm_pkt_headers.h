@@ -1,7 +1,7 @@
 #ifndef ETM_PKT_HEADERS_H_
 #define ETM_PKT_HEADERS_H_
 
-#define Async                   0b00000000
+#define ExtensionPacket         0b00000000
 #define TraceInfo               0b00000001
 #define LongAddress0            0b10011101
 #define LongAddress1            0b10011110

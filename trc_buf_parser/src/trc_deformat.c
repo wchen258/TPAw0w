@@ -291,8 +291,8 @@ static void read_word(uint32_t *output)
 
     dbg.total_read_fifo++;
 
-    // if (buffer_pointer < ETR_BUF_SIZE / 4)
-    //	etr_buffer[buffer_pointer++] = word;
+    if (buffer_pointer < ETR_BUF_SIZE / 4)
+    	etr_buffer[buffer_pointer++] = word;
 
     *output = word;
 }

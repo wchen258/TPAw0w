@@ -155,6 +155,23 @@ static void handle_addrwithcontext(uint8_t header) {
 	handle_context(Context1);
 }
 
+static void handle_extension_packet(void) {
+	uint8_t subheader;
+
+	if (try_read_data(&subheader, 1)) {
+		if (subheader == 0b00000000) { // Async
+			virtual_offset += 10;
+		} else if (subheader == 0b00000011) { // Discard
+			report("PAUSED, buffer_id: %d, DISCARD", current_buffer_id);
+			while(1);
+		} else if (subheader == 0b00000101) { // Overflow
+			dbg.overflow_ct ++ ;
+		}
+	} else {
+		return;
+	}
+}
+
 void handle_buffer(uint8_t buffer_id) {
     virtual_offset = 0;
     virtual_read_failed = 0;
@@ -195,12 +212,10 @@ void handle_buffer(uint8_t buffer_id) {
 			    handle_exc_or_shortaddr();
 			    break;
 
-		    case Async:
-			    virtual_offset += 11;
-			    dbg.trace_on_timings[1] = 0xF00C;
-			    dbg.trace_on_timings[2]++;
+		    case ExtensionPacket:
+		    	handle_extension_packet();
+		    	break;
 
-			    break;
 		    case LongAddress0:// Long Address with 8B payload
 		    case LongAddress1:
 			    virtual_offset += 8;

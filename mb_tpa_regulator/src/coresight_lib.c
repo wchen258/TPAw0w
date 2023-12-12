@@ -70,6 +70,20 @@ static uint32_t etm_acvr_addrs[][8] = {
     },
 };
 
+static uint32_t a53_cti_pulse_addrs [] = {
+		CS_BASE + A53_0_CTI + 0x01C,
+		CS_BASE + A53_1_CTI + 0x01C,
+		CS_BASE + A53_2_CTI + 0x01C,
+		CS_BASE + A53_3_CTI + 0x01C
+};
+
+static uint32_t a53_cti_ack_addrs [] = {
+		CS_BASE + A53_0_CTI + 0x010,
+		CS_BASE + A53_1_CTI + 0x010,
+		CS_BASE + A53_2_CTI + 0x010,
+		CS_BASE + A53_3_CTI + 0x010
+};
+
 #define ETR_MAN_FLUSH_BIT    6
 volatile uint32_t* etr_ffcr = (volatile uint32_t*) (CS_BASE + TMC1 + FFCR);
 
@@ -91,7 +105,7 @@ void etm_enable(uint8_t id) {
     volatile uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
 
     SET(*ctrl, 0);
-    while(CHECK(*stat, 0) == 1);
+//    while(CHECK(*stat, 0) == 1);
 
     XTime_GetTime(&etm_resume);
 
@@ -102,7 +116,7 @@ void etm_enable(uint8_t id) {
     		dbg.etm_inside_disable_timer = new_time;
     }
 
-    etr_man_flush();
+//    etr_man_flush();
 }
 
 /*  Disable is blocking. ETM has to be in off-ready state to be programmed */
@@ -143,6 +157,20 @@ uint64_t read_pmu_cycle_counter() {
     uint64_t pmu_cc = *pmu_cc_high;
     pmu_cc = (pmu_cc << 32) | *pmu_cc_low;
     return pmu_cc;
+}
+
+void a53_0_enter_dbg() {
+	 uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[0];
+	 uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[0];
+	 *pulse_reg = 0b0100;
+	 *ack_reg = 0b1 ;
+}
+
+void a53_0_leave_dbg() {
+	uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[0];
+	uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[0];
+	*pulse_reg = 0b0010;
+	*ack_reg = 0b1 << 1;
 }
 
 /*

@@ -23,6 +23,7 @@ struct debugger {
     // uint64_t pmcc[4][100];
 	uint32_t ms_ts_pt[4];
 	// char log[1024];
+	uint32_t overflow_ct;
 };
 
 extern volatile struct debugger dbg;

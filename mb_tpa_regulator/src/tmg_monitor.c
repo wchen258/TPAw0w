@@ -21,11 +21,18 @@ typedef struct {
 
 static milestone * ms_under_monitor[4];
 static milestone ms_fake_parent[4];
-
 static uint32_t event_address_map[4][4];
+static uint32_t tmp_cti_test = 0;
 
 void report_event_hit(uint8_t id, uint8_t event) {
     XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
+    
+    // Overhead Measurement: 
+    // By hardcode ID and pointer to 0, the regulator will not log correctly
+    // But it prevents from memory corruption due to large amount of milestone hit
+    // XTime_GetTime(&dbg.milestone_timestamps[0][0]);
+
+
     // dbg.pmcc[id][dbg.ms_ts_pt[id]] = read_pmu_cycle_counter();
     dbg.ms_ts_pt[id]++;
 	// dbg.on_ct += 1;
@@ -45,8 +52,12 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
     
     uint8_t j, reached_last_child = 0;
 
-    // XTime_GetTime(&dbg.milestone_timestamps[dbg.milestone_timestamps_pt]);    
-    // dbg.milestone_timestamps_pt++;
+    // TEST CODE START
+    if (id == 1) {
+    	a53_0_enter_dbg();
+    }
+    // TEST CODE END
+
     etm_disable(id);
 
     for (j = 0; j < 4; ++j) {
@@ -92,6 +103,13 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
 
     etm_enable(id);
     ms_under_monitor[id] = new_ms;
+
+    // TEST CODE START
+    if(id == 1) {
+    	usleep(1000);
+    	a53_0_leave_dbg();
+    }
+    // TEST CODE END
 }
 
 void handle_hit(uint8_t id) {
