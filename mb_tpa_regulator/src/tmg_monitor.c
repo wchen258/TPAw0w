@@ -27,15 +27,15 @@ static uint32_t tmp_cti_test = 0;
 void report_event_hit(uint8_t id, uint8_t event) {
     XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
     
-    // Overhead Measurement: 
+    // Overhead Measurement START 
     // By hardcode ID and pointer to 0, the regulator will not log correctly
     // But it prevents from memory corruption due to large amount of milestone hit
     // XTime_GetTime(&dbg.milestone_timestamps[0][0]);
 
-
     // dbg.pmcc[id][dbg.ms_ts_pt[id]] = read_pmu_cycle_counter();
+    // Overhead Measurement END
+
     dbg.ms_ts_pt[id]++;
-	// dbg.on_ct += 1;
 	reported_hit[id] = event_address_map[id][event];
 
 	// if (id == 1 && dbg.ms_ts_pt[id] > 60)
@@ -53,9 +53,9 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
     uint8_t j, reached_last_child = 0;
 
     // TEST CODE START
-    if (id == 1) {
-    	a53_0_enter_dbg();
-    }
+    // if (id == 1) {
+    // 	a53_0_enter_dbg();
+    // }
     // TEST CODE END
 
     etm_disable(id);
@@ -105,10 +105,10 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
     ms_under_monitor[id] = new_ms;
 
     // TEST CODE START
-    if(id == 1) {
-    	usleep(1000);
-    	a53_0_leave_dbg();
-    }
+    // if(id == 1) {
+    // 	usleep(1000);
+    // 	a53_0_leave_dbg();
+    // }
     // TEST CODE END
 }
 
