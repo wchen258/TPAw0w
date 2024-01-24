@@ -2,12 +2,15 @@
 #define DBG_UTIL_H
 
 #include <stdint.h>
+#include <stdatomic.h>
 #include "xtime_l.h"
+
+#define R0_BTCM_BASE 0xFFE20000
 
 struct debugger {
 	uint32_t fault;
 	uint32_t tmg_ready;
-	uint32_t hotreset;
+	uint32_t hotreset_old;
 	uint32_t assert;
 	uint32_t sync_ct;
 	uint32_t on_ct;
@@ -26,7 +29,14 @@ struct debugger {
 	uint32_t overflow_ct;
 };
 
+struct inter_rpu {
+    uint32_t hotreset;
+	volatile atomic_flag report_lock;
+	uint32_t simple_report_lock;
+};
+
 extern volatile struct debugger dbg;
+extern volatile struct inter_rpu * inter_rpu_com;
 
 void report(const char* format, ... );
 void breport(const char* format, ...);

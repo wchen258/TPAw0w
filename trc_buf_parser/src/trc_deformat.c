@@ -13,33 +13,36 @@
  */
 
 #include <stdio.h>
+#include <stdatomic.h>
 #include "platform.h"
 #include "xil_printf.h"
 #include "xtime_l.h"
 #include "coresight_lib.h"
 #include "dbg_util.h"
 #include "common.h"
+//#include "xil_cache_l.h"
 
 #define CHECK(x, y) (((x) & (1 << (y))) ? 1 : 0)
 
 // MISC, PRINTF
 void report(const char *format, ...)
 {
+    //while (atomic_flag_test_and_set_explicit(&inter_rpu_com->report_lock, memory_order_seq_cst));
+
     va_list args;
     xil_printf("DEFORMATTER: ");
     va_start(args, format);
     xil_vprintf(format, args);
     va_end(args);
     xil_printf("\n\r");
-}
 
-volatile uint32_t debug_flag = 0;
+    //sleep(1);
+
+    //atomic_flag_clear_explicit(&inter_rpu_com->report_lock, memory_order_seq_cst);
+}
 
 // ETR BUFFER AND POINTERS
 #define ETR_BUF_SIZE (4096 * 8)
-volatile uint32_t etr_buffer[ETR_BUF_SIZE / 4] __attribute__((section(".trc_buf_zone")));
-volatile uint32_t etr_buffer_control __attribute__((section(".trc_ctrl_zone")));
-uint32_t buffer_pointer;
 
 // PTRC BUFFER AND POINTERS
 #define PTRC_BUFFER_SIZE 4096
@@ -52,7 +55,6 @@ volatile uint8_t *ptrc_buf[4] = {
 };
 volatile uint32_t *ptrc_buf_pointer = (volatile uint32_t *)(R1_BTCM_BASE + PTRC_BUFFER_SIZE);
 // volatile uint32_t* ptrc_buf_pointer_read = (volatile uint32_t*) (R1_BTCM_BASE + PTRC_BUFFER_SIZE + 4 * 32);
-uint8_t current_etm_id;
 
 // Trigger a manual flush that drains all ETM(s) buffers
 #define ETR_MAN_FLUSH_BIT 6
@@ -104,7 +106,12 @@ volatile uint32_t *a2_cti_trigoutstatus = (volatile uint32_t *)(CS_BASE + A53_2_
 volatile uint32_t *a3_cti_intack = (volatile uint32_t *)(CS_BASE + A53_3_CTI + 0x010);
 volatile uint32_t *a3_cti_trigoutstatus = (volatile uint32_t *)(CS_BASE + A53_3_CTI + 0x134);
 
+volatile uint32_t debug_flag = 0;
+volatile uint32_t etr_buffer[ETR_BUF_SIZE / 4] __attribute__((section(".trc_buf_zone")));
+volatile uint32_t etr_buffer_control __attribute__((section(".trc_ctrl_zone")));
+uint32_t buffer_pointer;
 
+uint8_t current_etm_id;
 uint8_t flush_allowed = 1;
 
 // XTime firsthword_time, lasthword_time;
@@ -116,8 +123,7 @@ static void etr_man_flush()
     {
         dbg.man_flush_finished++;
         *etr_ffcr |= (0x1 << ETR_MAN_FLUSH_BIT);
-        while (*etr_ffcr & (0x1 << ETR_MAN_FLUSH_BIT))
-            ;
+        while (*etr_ffcr & (0x1 << ETR_MAN_FLUSH_BIT));
     }
 }
 
@@ -155,7 +161,7 @@ static void check_ctitrigger_status()
 
 uint32_t get_ptrc_buf_pointer(uint32_t i)
 {
-    while (1)
+    while (inter_rpu_com->hotreset == 0)
     {
         uint32_t read_pointer = ptrc_buf_pointer[i + 4];
         if (read_pointer < ptrc_buf_pointer[i])
@@ -173,6 +179,9 @@ uint32_t get_ptrc_buf_pointer(uint32_t i)
         dbg.vals[1]++;
     }
 
+    if (inter_rpu_com->hotreset != 0)
+        return 0;
+
     uint32_t ptrc_buf_pointer_val = (ptrc_buf_pointer[i] % (PTRC_BUFFER_SIZE / 4));
     // ptrc_buf_pointer[i] = ptrc_buf_pointer[i] + 1;
 
@@ -189,6 +198,9 @@ static void write_to_regulator_buffer(uint8_t *cur_id, uint8_t data)
     if (*cur_id >= 1 && *cur_id <= 4)
     {
         uint32_t write_pointer = get_ptrc_buf_pointer(*cur_id - 1);
+        
+        if (inter_rpu_com->hotreset != 0)
+            return;
 
         ptrc_buf[*cur_id - 1][write_pointer] = data;
         // ptrc_buf[1][write_pointer] = dbg.total_frames;
@@ -261,6 +273,9 @@ XTime last_flush = 0;
 
 static void read_word(uint32_t *output)
 {
+    if (inter_rpu_com->hotreset != 0)
+        return;
+
     uint32_t word = 0xFFFFFFFF;
 
     do
@@ -278,8 +293,7 @@ static void read_word(uint32_t *output)
                 dbg.vals[7] = 0xD0DCAFEA;
 
                 report("STOPPED, word==0xFFFFFFFF and TMCReady");
-                while (1)
-                    ;
+                while (inter_rpu_com->hotreset == 0);
             }
         }
         else if (word == 0xFFFFFFFF)
@@ -287,7 +301,7 @@ static void read_word(uint32_t *output)
             dbg.vals[4]++;
         }
         dbg.fifo_read_tries_after++;
-    } while (word == 0xFFFFFFFF && dbg.hotreset == 0);
+    } while (word == 0xFFFFFFFF && inter_rpu_com->hotreset == 0);
 
     dbg.total_read_fifo++;
 
@@ -298,7 +312,7 @@ static void read_word(uint32_t *output)
 }
 
 
-static uint32_t idzero_ignore = 0;
+//static uint32_t idzero_ignore = 0;
 
 void trace_loop(void)
 {
@@ -313,8 +327,7 @@ void trace_loop(void)
 
     uint32_t frame[4];
 
-    while (etr_buffer_control == 0)
-        ;
+    while (etr_buffer_control == 0);
 
     while (1)
     {
@@ -322,14 +335,15 @@ void trace_loop(void)
         read_word(&frame[1]);
         read_word(&frame[2]);
         read_word(&frame[3]);
-        if (dbg.hotreset) {
-            report("DEF hotreset");
+
+        if (inter_rpu_com->hotreset) {
+            report("HOTRESET");
             break;
         }
+
         proc_frame((uint8_t *)&frame[0], &current_etm_id);
     }
 }
-
 
 void reset(void)
 {
@@ -352,14 +366,26 @@ void reset(void)
     debug_flag = 0;
     flush_allowed = 1;
     reset_dbg_util();
+    inter_rpu_com->hotreset = 0;
 }
 
 int main()
 {
     init_platform();
 
+    //Xil_DCacheFlush();
+    //Xil_DCacheDisable();
+    //Xil_ICacheDisable();
+    //Xil_L1DCacheDisable();
+    //Xil_L1ICacheDisable();
+    //Xil_L2CacheDisable();
+
+    inter_rpu_com->hotreset = 0;
+    inter_rpu_com->simple_report_lock = 0;
+    atomic_flag_clear(&inter_rpu_com->report_lock);
+
     xil_printf("\n\r\n\r");
-    report("Started (Deformatter 1.2, Soft, FIFO)");
+    report("Started (Deformatter 1.3.12, Soft, FIFO)");
 
     while (1)
     {

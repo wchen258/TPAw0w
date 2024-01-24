@@ -35,6 +35,11 @@ void report_event_hit(uint8_t id, uint8_t event) {
     // dbg.pmcc[id][dbg.ms_ts_pt[id]] = read_pmu_cycle_counter();
     // Overhead Measurement END
 
+    // timing profiling add ADDR start
+    // forcing the address hit logged into buf 3
+    dbg.milestone_timestamps[3][dbg.ms_ts_pt[id]] = (XTime) event_address_map[id][event];
+    // timing profiling add ADDR end
+
     dbg.ms_ts_pt[id]++;
 	reported_hit[id] = event_address_map[id][event];
 
@@ -149,7 +154,7 @@ void handle_hit(uint8_t id) {
     reported_hit[id] = 0;
 }
 
-void reset_tmg_buf() {
+void reset_tmg() {
     int i, j;
 
     for (i = 0; i < 4; ++i) {
@@ -174,6 +179,7 @@ void reset_tmg_buf() {
 		ms_under_monitor[i] = &ms_fake_parent[i];
     }
 
+    tmp_cti_test = 0;
     dbg.tmg_ready = 0;
 
     report("tmg_buf reset, waiting for tmg graph");

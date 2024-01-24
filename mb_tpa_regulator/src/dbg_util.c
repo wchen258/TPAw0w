@@ -1,7 +1,10 @@
+#include <stdatomic.h>
 #include "dbg_util.h"
 #include "xil_printf.h"
 
 volatile struct debugger __attribute__((section(".dbg_mem_zone"))) dbg = {0};
+
+volatile struct inter_rpu * inter_rpu_com = (volatile struct inter_rpu *)(R0_BTCM_BASE + 0x8410);
 
 static uint32_t log_ptr = 0;
 
@@ -11,12 +14,18 @@ void reset_dbg_util() {
 }
 
 void report(const char* format, ... ) {
+	//while (atomic_flag_test_and_set_explicit(&inter_rpu_com->report_lock, memory_order_seq_cst));
+
 	va_list args;
 	xil_printf("REGULATOR: ");
 	va_start(args, format);
 	xil_vprintf(format, args);
 	va_end(args);
 	xil_printf("\n\r");
+
+	//sleep(1);
+
+	//atomic_flag_clear_explicit(&inter_rpu_com->report_lock, memory_order_seq_cst);
 }
 
 static inline void write_to_log(char c) {

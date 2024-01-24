@@ -2,13 +2,16 @@
 #define DBG_UTIL_H
 
 #include <stdint.h>
+#include <stdatomic.h>
+
+#define R0_BTCM_BASE 0xFFE20000
 
 /* Usage convention:
  * write 1 to hotreset cause the DEF to reset
  * other registers have no constraint
  */
 struct debugger {
-    uint32_t hotreset;
+    uint32_t hotreset_old;
 	uint32_t vals[7];
 	uint32_t etm_inside_disable_timer;
 	uint32_t fffe_capture[8];
@@ -29,7 +32,16 @@ struct debugger {
 	uint32_t ctiacks_r5;
 };
 
+struct inter_rpu {
+    uint32_t hotreset;
+	volatile atomic_flag report_lock;
+	uint32_t simple_report_lock;
+};
+
+extern volatile struct inter_rpu * inter_rpu_com;
 extern volatile struct debugger dbg;
+
+void reset_inter_rpu_com(void);
 
 void report(const char* format, ... );
 void reset_dbg_util();

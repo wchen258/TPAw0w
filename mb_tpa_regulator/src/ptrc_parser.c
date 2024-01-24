@@ -271,7 +271,7 @@ void handle_buffer(uint8_t buffer_id) {
     }
 }
 
-void reset_ptrc_buf(uint8_t buffer_id) {
+static void reset_ptrc_buf(uint8_t buffer_id) {
     int j;
 	for (j = 0; j < PTRC_BUFFER_SIZE / 4; ++j) {
 		ptrc_buf[buffer_id][j] = 0;
@@ -279,6 +279,16 @@ void reset_ptrc_buf(uint8_t buffer_id) {
     ptrc_abs_rpt[buffer_id] = 0;
     ptrc_abs_wpt[buffer_id] = 0;
     in_range[buffer_id] = 0;
+}
+
+void reset_ptrc(void) {
+	int i = 0;
+	for (i = 0; i < 4; ++i)
+		reset_ptrc_buf(i);
+	
+	virtual_offset = 0;
+	virtual_read_failed = 0;
+	current_buffer_id = 0;
 }
 
 void report_ptrc_mem() {

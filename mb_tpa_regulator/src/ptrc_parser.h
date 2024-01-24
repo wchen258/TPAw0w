@@ -5,7 +5,7 @@
 
 void handle_buffer(uint8_t);
 void apply_virtual_offset(void);
-void reset_ptrc_buf(uint8_t);
+void reset_ptrc(void);
 void report_ptrc_mem(void);
 
 #endif // PTRC_PARSER_H
