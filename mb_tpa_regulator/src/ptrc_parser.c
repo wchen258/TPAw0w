@@ -82,7 +82,6 @@ static void handle_longaddress(uint8_t header) {
 
 			if (in_range[current_buffer_id]) {
 				//report_address_hit(current_buffer_id, address);
-				//dbg.on_ct += 1;
 				in_range[current_buffer_id] = 0;
 			}
 
@@ -195,7 +194,7 @@ void handle_buffer(uint8_t buffer_id) {
 			    if (dbg.vals[0] < 4)
 			    	dbg.traceon_frames[dbg.vals[0]] = ptrc_buf[1][(ptrc_abs_rpt[current_buffer_id]) % (PTRC_BUFFER_SIZE / 4)];
 			    */
-			    dbg.vals[0] += 1;
+			    //dbg.vals[0] += 1;
 
 			    break;
 

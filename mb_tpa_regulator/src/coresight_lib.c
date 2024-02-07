@@ -159,16 +159,16 @@ uint64_t read_pmu_cycle_counter() {
     return pmu_cc;
 }
 
-void a53_0_enter_dbg() {
-	 uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[0];
-	 uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[0];
+void a53_enter_dbg(uint32_t core) {
+	 uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[core];
+	 uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[core];
 	 *pulse_reg = 0b0100;
 	 *ack_reg = 0b1 ;
 }
 
-void a53_0_leave_dbg() {
-	uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[0];
-	uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[0];
+void a53_leave_dbg(uint32_t core) {
+	uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[core];
+	uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[core];
 	*pulse_reg = 0b0010;
 	*ack_reg = 0b1 << 1;
 }

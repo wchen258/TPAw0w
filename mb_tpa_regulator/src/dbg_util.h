@@ -11,10 +11,11 @@ struct debugger {
 	uint32_t fault;
 	uint32_t tmg_ready;
 	uint32_t hotreset_old;
-	uint32_t assert;
-	uint32_t sync_ct;
-	uint32_t on_ct;
-	uint32_t vals[4];
+	uint32_t tpa_mode; // control which timing attribute is logged 0 means normal (log real time), 1 means logging accumulative nominal, 2 means logging tail time
+	float    alpha;
+	float    beta;
+	uint32_t margin;
+	uint32_t vals[3];
 	uint32_t etm_inside_disable_timer;
 	uint32_t current_monitoring[4];
 	uint32_t trace_on_timings[8];
@@ -27,6 +28,8 @@ struct debugger {
 	uint32_t ms_ts_pt[4];
 	// char log[1024];
 	uint32_t overflow_ct;
+	uint32_t enter_dbg_ct;
+	uint32_t leave_dbg_ct;
 };
 
 struct inter_rpu {

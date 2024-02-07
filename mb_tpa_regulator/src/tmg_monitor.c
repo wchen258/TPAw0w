@@ -24,8 +24,14 @@ static milestone ms_fake_parent[4];
 static uint32_t event_address_map[4][4];
 static uint32_t tmp_cti_test = 0;
 
+static XTime real_time_base [4] = {0};
+static uint8_t rt_base_log_pt [4] = {190, 190, 190, 190};
+static uint32_t acc_nominal_time [4] = {0};
+uint32_t entry_addr [4] = {0};
+static uint8_t halt=0;
+
 void report_event_hit(uint8_t id, uint8_t event) {
-    XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
+    // XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
     
     // Overhead Measurement START 
     // By hardcode ID and pointer to 0, the regulator will not log correctly
@@ -37,10 +43,10 @@ void report_event_hit(uint8_t id, uint8_t event) {
 
     // timing profiling add ADDR start
     // forcing the address hit logged into buf 3
-    dbg.milestone_timestamps[3][dbg.ms_ts_pt[id]] = (XTime) event_address_map[id][event];
+    // dbg.milestone_timestamps[3][dbg.ms_ts_pt[id]] = (XTime) event_address_map[id][event];
     // timing profiling add ADDR end
 
-    dbg.ms_ts_pt[id]++;
+    // dbg.ms_ts_pt[id]++;
 	reported_hit[id] = event_address_map[id][event];
 
 	// if (id == 1 && dbg.ms_ts_pt[id] > 60)
@@ -53,68 +59,97 @@ void report_address_hit(uint8_t id, uint32_t address) {
 
 extern uint8_t hit_last;
 
+// static int throw_away_counter = 0;
 static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * new_ms) {
     
     uint8_t j, reached_last_child = 0;
 
-    // TEST CODE START
-    // if (id == 1) {
-    // 	a53_0_enter_dbg();
-    // }
-    // TEST CODE END
-
-    etm_disable(id);
-
-    for (j = 0; j < 4; ++j) {
-        if (new_ms->children[j].offset == 0xFFFFFFFF) {
-            reached_last_child = 1;
-
-            if (j == 0)
-            	hit_last |= 0b1 << id;
-        }
-
-        if (reached_last_child) {
-        	dbg.assert = dbg.assert | 0b100;
-
-        	// if (j == 3 && id == 1)
-        	// 	etm_write_acvr(id, 7 - j, 0x404788);
-        	// else if (j == 2 && id == 1)
-        	// 	etm_write_acvr(id, 7 - j, 0x4047a8);
-        	// else
-        	// 	etm_write_acvr(id, 7 - j, 0);
-
-        	etm_write_acvr(id, 7 - j, 0);
-
-        	//if (id == 1)
-        	//	breport("j%d", j);
-
-        	event_address_map[id][j] = 0;
-
-        	dbg.current_monitoring[j] = 0;
-        } else {
-        	uint32_t addr = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
-        	etm_write_acvr(id, 7 - j, addr);
-
-        	// if (id == 1 && addr != 0 && dbg.ms_ts_pt[id] > 60)
-        	// 		breport("j%d %x", j, addr);
-
-        	event_address_map[id][j] = addr;
-
-        	dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
-        }
+    uint32_t real_time = 0;
+    XTime timestamp;
+    if (new_ms->address == entry_addr[id]) {
+        XTime_GetTime(&real_time_base[id]);
+        dbg.milestone_timestamps[id][rt_base_log_pt[id]++] = real_time_base[id];
+        acc_nominal_time[id] = 0;
+    } else {
+        XTime_GetTime(&timestamp);
+        real_time = (uint32_t) (timestamp - real_time_base[id]);
+        acc_nominal_time[id] += nominal_time;
     }
 
-    dbg.ms_updates[id]++;
+    // dbg.milestone_timestamps[1][throw_away_counter ++ ] = real_time;
+    // dbg.milestone_timestamps[1][throw_away_counter ++ ] = acc_nominal_time[id];
+    // dbg.milestone_timestamps[1][throw_away_counter ++ ] = new_ms->tail_time;
+    uint8_t tpa_mode = dbg.tpa_mode & 0b111;
+    uint8_t do_regulation = dbg.tpa_mode >> 31;
+    if (tpa_mode == 0) {
+        dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]++] = real_time; 
+    } else if (tpa_mode == 1) {
+        dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]++] = acc_nominal_time[id]; 
+    } else if (tpa_mode == 2) {
+        dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]++] = new_ms->tail_time; 
+    }
 
-    etm_enable(id);
+    if (do_regulation) {
+	    if (real_time > acc_nominal_time[id] * dbg.alpha) {
+            if (halt == 0) {
+                halt = 1;
+                a53_enter_dbg(2);
+                dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
+            }
+	    // } else if (real_time < acc_nominal_time[id] * dbg.alpha - dbg.margin) {   // margin is constant, causing the initial pause
+	    } else if (real_time < acc_nominal_time[id] * dbg.alpha * (1 - dbg.beta)) {  // this is consistent with the paper, Daniel's, and the old implementation 
+            if (halt == 1) {
+                halt = 0;
+                a53_leave_dbg(2);
+                dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
+            }
+	    }
+    }
+
+
+    if (reported_hit[id] != ms_under_monitor[id]->address) {
+        etm_disable(id);
+        for (j = 0; j < 4; ++j) {
+            if (new_ms->children[j].offset == 0xFFFFFFFF) {
+                reached_last_child = 1;
+
+                if (j == 0)
+                    hit_last |= 0b1 << id;
+            }
+
+            if (reached_last_child) {
+                // dbg.assert = dbg.assert | 0b100;
+                etm_write_acvr(id, 7 - j, 0);
+                event_address_map[id][j] = 0;
+                dbg.current_monitoring[j] = 0;
+            } else {
+                uint32_t addr = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
+                etm_write_acvr(id, 7 - j, addr);
+                event_address_map[id][j] = addr;
+                dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
+
+
+                if (do_regulation) {
+                    if (addr == 0xdeadbeef) {
+                        if (halt == 1) {
+                            halt = 0;
+                            a53_leave_dbg(2);
+                            dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
+                        }
+                    }
+                }
+            }
+        }
+
+        dbg.ms_updates[id]++;
+        etm_enable(id);
+    }
+
     ms_under_monitor[id] = new_ms;
+}
 
-    // TEST CODE START
-    // if(id == 1) {
-    // 	usleep(1000);
-    // 	a53_0_leave_dbg();
-    // }
-    // TEST CODE END
+static void handle_hit_logic() {
+
 }
 
 void handle_hit(uint8_t id) {
@@ -122,10 +157,12 @@ void handle_hit(uint8_t id) {
         return;
     }
 
+    /*
     if (reported_hit[id] == ms_under_monitor[id]->address) {
     	reported_hit[id] = 0;
     	return;
     }
+    */
 
     uint32_t j = 0;
 
@@ -133,6 +170,7 @@ void handle_hit(uint8_t id) {
         milestone * child = (milestone *) &tmg_buf[id][ms_under_monitor[id]->children[j].offset];
         //report("%d, 0%x == 0%x\n\r", id, child->address, reported_hit[id]);
 
+        /*
         if (dbg.vals[1] == 0) {
 			dbg.vals[1] = id + 1;
 			dbg.vals[2] = child->address;
@@ -142,6 +180,7 @@ void handle_hit(uint8_t id) {
 				dbg.fault = 0xFF23;
 			}
 		}
+        */
 
         if (child->address == reported_hit[id]) {
         	dbg.traceon_frames[id]++;
@@ -195,6 +234,17 @@ void reset_tmg() {
     		event_address_map[i][j] = child->address;
     	}
     }
+
+    for (i = 0; i < 4; i++) {
+        real_time_base[i] = 0;
+        acc_nominal_time[i] = 0;
+        entry_addr[i] = ((uint32_t *) tmg_buf[i])[0];
+        rt_base_log_pt[i] = 190;
+    }
+    // throw_away_counter = 0;
+
+    halt = 0;
+
 }
 
 void report_tmg_mem() {
