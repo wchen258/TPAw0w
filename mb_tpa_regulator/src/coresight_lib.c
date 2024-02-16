@@ -163,14 +163,16 @@ void a53_enter_dbg(uint32_t core) {
 	 uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[core];
 	 uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[core];
 	 *pulse_reg = 0b0100;
-	 *ack_reg = 0b1 ;
+	 //*ack_reg = 0b1 ;
 }
 
-void a53_leave_dbg(uint32_t core) {
+void a53_leave_dbg(uint32_t core, uint8_t do_ack) {
 	uint32_t* pulse_reg = (uint32_t*) a53_cti_pulse_addrs[core];
 	uint32_t* ack_reg = (uint32_t*) a53_cti_ack_addrs[core];
-	*pulse_reg = 0b0010;
-	*ack_reg = 0b1 << 1;
+    if (do_ack == 1)
+	    *ack_reg = 0b1;
+    *pulse_reg = 0b0010;
+	//*ack_reg = 0b1 << 1;
 }
 
 /*

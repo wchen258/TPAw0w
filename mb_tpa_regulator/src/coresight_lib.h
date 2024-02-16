@@ -162,7 +162,7 @@ void etm_disable(uint8_t id);
 void etm_write_acvr(uint8_t id, uint8_t ac_id, uint32_t addr_val);
 void etm_write_acvr_pair(uint8_t id, uint8_t ac_id, uint32_t addr_val);
 void a53_enter_dbg(uint32_t);
-void a53_leave_dbg(uint32_t);
+void a53_leave_dbg(uint32_t, uint8_t);
 
 uint64_t read_pmu_cycle_counter() ;
 

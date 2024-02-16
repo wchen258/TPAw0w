@@ -94,13 +94,15 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
             if (halt == 0) {
                 halt = 1;
                 a53_enter_dbg(2);
+                a53_enter_dbg(3);
                 dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
             }
 	    // } else if (real_time < acc_nominal_time[id] * dbg.alpha - dbg.margin) {   // margin is constant, causing the initial pause
 	    } else if (real_time < acc_nominal_time[id] * dbg.alpha * (1 - dbg.beta)) {  // this is consistent with the paper, Daniel's, and the old implementation 
             if (halt == 1) {
                 halt = 0;
-                a53_leave_dbg(2);
+                a53_leave_dbg(2, 1);
+                a53_leave_dbg(3, 1);
                 dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
             }
 	    }
@@ -133,7 +135,8 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
                     if (addr == 0xdeadbeef) {
                         if (halt == 1) {
                             halt = 0;
-                            a53_leave_dbg(2);
+                            a53_leave_dbg(2, 1);
+                            a53_leave_dbg(3, 1);
                             dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
                         }
                     }
