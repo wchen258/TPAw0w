@@ -12,12 +12,15 @@ struct debugger {
 	uint32_t tmg_ready;
 	uint32_t hotreset_old;
 	uint32_t tpa_mode; // control which timing attribute is logged 0 means normal (log real time), 1 means logging accumulative nominal, 2 means logging tail time
-	float    alpha;
-	float    beta;
-	uint32_t margin;
-	uint32_t vals[3];
-	uint32_t etm_inside_disable_timer;
-	uint32_t current_monitoring[4];
+	// float    alpha;
+	// float    beta;
+	// uint32_t margin;
+	// uint32_t vals[3];
+	// uint32_t etm_inside_disable_timer;
+	// uint32_t current_monitoring0;
+    float alpha[4];
+    float beta[4];
+	uint32_t current_monitoring[3];
 	uint32_t trace_on_timings[8];
 	uint32_t traceon_frames[4];
 	uint32_t ms_updates[4];

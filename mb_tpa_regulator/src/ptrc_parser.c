@@ -259,7 +259,7 @@ void handle_buffer(uint8_t buffer_id) {
 
 		    default:
 		    	SET(dbg.fault, 4);
-		    	dbg.trace_on_timings[0] = header;
+		    	// dbg.trace_on_timings[0] = header;
 			    report("PAUSED, handle_buffer default case, buffer_id: %d, header: 0x%x", current_buffer_id, header);
 			    while(1);
 	    }

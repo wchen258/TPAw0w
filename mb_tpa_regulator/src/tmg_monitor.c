@@ -2,6 +2,7 @@
 #include "tmg_monitor.h"
 #include "coresight_lib.h"
 #include "dbg_util.h"
+#include "log_util.h"
 #include "xtime_l.h"
 
 static volatile uint8_t tmg_buf[4][TMG_BUFFER_SIZE / 4] __attribute__((section(".tmg_mem_zone")));
@@ -60,9 +61,12 @@ void report_address_hit(uint8_t id, uint32_t address) {
 extern uint8_t hit_last;
 
 // static int throw_away_counter = 0;
-static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, milestone * new_ms) {
-    
+static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, uint32_t nominal_time, milestone * new_ms) {
     uint8_t j, reached_last_child = 0;
+    struct ms_record log_ms_record = {0};
+
+    log_ms_record.address_parent = current_ms_address;
+    log_ms_record.address_child = new_ms->address;
 
     uint32_t real_time = 0;
     XTime timestamp;
@@ -76,34 +80,36 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
         acc_nominal_time[id] += nominal_time;
     }
 
-    // dbg.milestone_timestamps[1][throw_away_counter ++ ] = real_time;
-    // dbg.milestone_timestamps[1][throw_away_counter ++ ] = acc_nominal_time[id];
-    // dbg.milestone_timestamps[1][throw_away_counter ++ ] = new_ms->tail_time;
     uint8_t tpa_mode = dbg.tpa_mode & 0b111;
-    uint8_t do_regulation = dbg.tpa_mode >> 31;
+    uint8_t do_regulation = (dbg.tpa_mode >> (28 + id)) & 0b1;
     if (tpa_mode == 0) {
         dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]++] = real_time; 
+        log_ms_record.timestamp = real_time;
     } else if (tpa_mode == 1) {
         dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]++] = acc_nominal_time[id]; 
+        log_ms_record.timestamp = acc_nominal_time[id];
     } else if (tpa_mode == 2) {
         dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]++] = new_ms->tail_time; 
+        log_ms_record.timestamp = new_ms->tail_time;
     }
 
     if (do_regulation) {
-	    if (real_time > acc_nominal_time[id] * dbg.alpha) {
+	    if (real_time > acc_nominal_time[id] * dbg.alpha[id]) {
             if (halt == 0) {
                 halt = 1;
                 a53_enter_dbg(2);
                 a53_enter_dbg(3);
                 dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
+                log_ms_record.decision = 1;
             }
 	    // } else if (real_time < acc_nominal_time[id] * dbg.alpha - dbg.margin) {   // margin is constant, causing the initial pause
-	    } else if (real_time < acc_nominal_time[id] * dbg.alpha * (1 - dbg.beta)) {  // this is consistent with the paper, Daniel's, and the old implementation 
+	    } else if (real_time < acc_nominal_time[id] * dbg.alpha[id] * (1.0 - dbg.beta[id])) {  // this is consistent with the paper, Daniel's, and the old implementation 
             if (halt == 1) {
                 halt = 0;
                 a53_leave_dbg(2, 1);
                 a53_leave_dbg(3, 1);
                 dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
+                log_ms_record.decision = 2;
             }
 	    }
     }
@@ -123,12 +129,12 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
                 // dbg.assert = dbg.assert | 0b100;
                 etm_write_acvr(id, 7 - j, 0);
                 event_address_map[id][j] = 0;
-                dbg.current_monitoring[j] = 0;
+                // dbg.current_monitoring[j] = 0;
             } else {
                 uint32_t addr = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
                 etm_write_acvr(id, 7 - j, addr);
                 event_address_map[id][j] = addr;
-                dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
+                // dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
 
 
                 if (do_regulation) {
@@ -138,6 +144,7 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
                             a53_leave_dbg(2, 1);
                             a53_leave_dbg(3, 1);
                             dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
+                            log_ms_record.decision = 2;
                         }
                     }
                 }
@@ -149,10 +156,8 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t nominal_time, mileston
     }
 
     ms_under_monitor[id] = new_ms;
-}
 
-static void handle_hit_logic() {
-
+    add_record(id, log_ms_record);
 }
 
 void handle_hit(uint8_t id) {
@@ -186,9 +191,9 @@ void handle_hit(uint8_t id) {
         */
 
         if (child->address == reported_hit[id]) {
-        	dbg.traceon_frames[id]++;
+        	// dbg.traceon_frames[id]++;
 
-            set_new_ms_under_monitor(id, ms_under_monitor[id]->children[j].nominal_time, child);
+            set_new_ms_under_monitor(id, ms_under_monitor[id]->address, ms_under_monitor[id]->children[j].nominal_time, child);
             break;
         }
     }

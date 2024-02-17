@@ -46,12 +46,13 @@ MEMORY
    psu_ocm_ram_0_MEM_0 : ORIGIN = 0xFFFC0000, LENGTH = 0x40000
    psu_qspi_linear_0_MEM_0 : ORIGIN = 0xC0000000, LENGTH = 0x20000000
    psu_r5_1_atcm_MEM_0 : ORIGIN = 0x0, LENGTH = 0x10000
-   psu_r5_1_btcm_MEM_0 : ORIGIN = 0x23020, LENGTH = 0xCFE0
+   psu_r5_1_btcm_MEM_0 : ORIGIN = 0x2B020, LENGTH = 0x4FE0
    psu_r5_ddr_0_MEM_0 : ORIGIN = 0x100000, LENGTH = 0x7FE00000
    ptrc_buffer  : ORIGIN = 0x20000, LENGTH = 0x1000
    ptrc_buffer_pointer  : ORIGIN = 0x21000, LENGTH = 0x20
    dbg_mem  : ORIGIN = 0x21020, LENGTH = 0x1000
    tmg_mem  : ORIGIN = 0x22020, LENGTH = 0x1000
+   log_mem  : ORIGIN = 0x23020, LENGTH = 0x8000
 }
 
 /* Specify the default entry point to the program */
@@ -116,6 +117,10 @@ SECTIONS
 .tmg_mem_zone : {
   *(.tmg_mem_zone)
 } > tmg_mem
+
+.log_mem_zone : {
+  *(.log_mem_zone)
+} > log_mem
 
 .rodata : {
    __rodata_start = .;

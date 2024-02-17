@@ -109,12 +109,12 @@ void etm_enable(uint8_t id) {
 
     XTime_GetTime(&etm_resume);
 
-    if (etm_resume > etm_off) {
+    // if (etm_resume > etm_off) {
     	// uint32_t new_time = (etm_resume - etm_off) / COUNTS_PER_USECOND;
-    	uint32_t new_time = (etm_resume - etm_off) ;
-    	if (new_time > dbg.etm_inside_disable_timer)
-    		dbg.etm_inside_disable_timer = new_time;
-    }
+    	// uint32_t new_time = (etm_resume - etm_off) ;
+    	// if (new_time > dbg.etm_inside_disable_timer)
+    		// dbg.etm_inside_disable_timer = new_time;
+    // }
 
 //    etr_man_flush();
 }
@@ -126,7 +126,7 @@ void etm_disable(uint8_t id) {
     volatile uint32_t *ctrl = (uint32_t *) etm_ctrl_addrs[id];
     volatile uint32_t *stat = (uint32_t *) etm_stat_addrs[id];
 
-    XTime_GetTime(&etm_off);
+    // XTime_GetTime(&etm_off);
 
     CLEAR(*ctrl, 0);
     while(CHECK(*stat, 0) == 0);

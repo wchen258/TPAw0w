@@ -5,6 +5,7 @@
 #include "etm_pkt_headers.h"
 #include "timed_milestone_graph.h"
 #include "dbg_util.h"
+#include "log_util.h"
 #include "xil_cache.h"
 //#include "xil_cache_l.h"
 #include "ptrc_parser.h"
@@ -42,6 +43,7 @@ void regulator_loop(void) {
 void reset(void) {
 	reset_ptrc();
     reset_dbg_util();
+    reset_log_util();
 
     hit_last = 0;
 
