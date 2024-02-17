@@ -13,6 +13,7 @@
 #include "tmg_monitor.h"
 
 uint8_t hit_last = 0;
+uint8_t trc_buf_lock = 0;
 
 static void initial_hotreset(void) {
     report("HOTRESET Initiated");
@@ -33,6 +34,10 @@ void regulator_loop(void) {
 
 		for (i = 0; i < 4; ++i) {
 			if (((hit_last >> i) & 0b1) == 0) {
+                // check the locking bit mask. A locking buffer indicates the corresponding core is halted
+                if (trc_buf_lock >> i & 0b1) {
+                    continue;
+                }
 				handle_buffer(i);
 				handle_hit(i);
 			}
@@ -48,6 +53,7 @@ void reset(void) {
     hit_last = 0;
 
     reset_tmg();
+    trc_buf_lock = 0;
 }
 
 int main() {

@@ -29,38 +29,57 @@ static XTime real_time_base [4] = {0};
 static uint8_t rt_base_log_pt [4] = {190, 190, 190, 190};
 static uint32_t acc_nominal_time [4] = {0};
 uint32_t entry_addr [4] = {0};
-static uint8_t halt=0;
+// static uint8_t halt=0;
+static uint8_t halt_mask=0;
+
+extern uint8_t trc_buf_lock;
+extern uint8_t hit_last;
 
 void report_event_hit(uint8_t id, uint8_t event) {
-    // XTime_GetTime(&dbg.milestone_timestamps[id][dbg.ms_ts_pt[id]]);
-    
-    // Overhead Measurement START 
-    // By hardcode ID and pointer to 0, the regulator will not log correctly
-    // But it prevents from memory corruption due to large amount of milestone hit
-    // XTime_GetTime(&dbg.milestone_timestamps[0][0]);
-
-    // dbg.pmcc[id][dbg.ms_ts_pt[id]] = read_pmu_cycle_counter();
-    // Overhead Measurement END
-
-    // timing profiling add ADDR start
-    // forcing the address hit logged into buf 3
-    // dbg.milestone_timestamps[3][dbg.ms_ts_pt[id]] = (XTime) event_address_map[id][event];
-    // timing profiling add ADDR end
-
-    // dbg.ms_ts_pt[id]++;
 	reported_hit[id] = event_address_map[id][event];
-
-	// if (id == 1 && dbg.ms_ts_pt[id] > 60)
-	// 	breport("e%d", event);
 }
 
 void report_address_hit(uint8_t id, uint32_t address) {
     reported_hit[id] = address;
 }
 
-extern uint8_t hit_last;
 
-// static int throw_away_counter = 0;
+static void invoke_sched_old(uint8_t id, uint32_t real_time, struct ms_record* log_ms_record) {
+    if (real_time > acc_nominal_time[id] * dbg.alpha[id]) {
+        if (halt_mask  == 0) {
+            halt_mask = 1;
+            a53_enter_dbg(2);
+            trc_buf_lock |= 0b1 << 2;
+            a53_enter_dbg(3);
+            trc_buf_lock |= 0b1 << 3;
+            dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
+            log_ms_record->decision = 1;
+        }
+	} else if (real_time < acc_nominal_time[id] * dbg.alpha[id] * (1.0 - dbg.beta[id])) {  // this is consistent with the paper, Daniel's, and the old implementation 
+        if (halt_mask == 1) {
+            halt_mask = 0;
+            a53_leave_dbg(2, 1);
+            trc_buf_lock &= ~(0b1 << 2);
+            a53_leave_dbg(3, 1);
+            trc_buf_lock &= ~(0b1 << 3);
+            dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
+            log_ms_record->decision = 2;
+        }
+    }
+}
+
+static void invoke_sched_epilogue(uint8_t id, struct ms_record* log_ms_record) {
+    if (halt_mask == 1) {
+        halt_mask = 0;
+        a53_leave_dbg(2, 1);
+        trc_buf_lock &= ~(0b1 << 2);
+        a53_leave_dbg(3, 1);
+        trc_buf_lock &= ~(0b1 << 3);
+        dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
+        log_ms_record->decision = 2;
+    }   
+}
+
 static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, uint32_t nominal_time, milestone * new_ms) {
     uint8_t j, reached_last_child = 0;
     struct ms_record log_ms_record = {0};
@@ -94,26 +113,8 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, ui
     }
 
     if (do_regulation) {
-	    if (real_time > acc_nominal_time[id] * dbg.alpha[id]) {
-            if (halt == 0) {
-                halt = 1;
-                a53_enter_dbg(2);
-                a53_enter_dbg(3);
-                dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
-                log_ms_record.decision = 1;
-            }
-	    // } else if (real_time < acc_nominal_time[id] * dbg.alpha - dbg.margin) {   // margin is constant, causing the initial pause
-	    } else if (real_time < acc_nominal_time[id] * dbg.alpha[id] * (1.0 - dbg.beta[id])) {  // this is consistent with the paper, Daniel's, and the old implementation 
-            if (halt == 1) {
-                halt = 0;
-                a53_leave_dbg(2, 1);
-                a53_leave_dbg(3, 1);
-                dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
-                log_ms_record.decision = 2;
-            }
-	    }
+        invoke_sched_old(id, real_time, &log_ms_record);
     }
-
 
     if (reported_hit[id] != ms_under_monitor[id]->address) {
         etm_disable(id);
@@ -126,26 +127,16 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, ui
             }
 
             if (reached_last_child) {
-                // dbg.assert = dbg.assert | 0b100;
                 etm_write_acvr(id, 7 - j, 0);
                 event_address_map[id][j] = 0;
-                // dbg.current_monitoring[j] = 0;
             } else {
                 uint32_t addr = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
                 etm_write_acvr(id, 7 - j, addr);
                 event_address_map[id][j] = addr;
-                // dbg.current_monitoring[j] = ((milestone *) &tmg_buf[id][new_ms->children[j].offset])->address;
-
 
                 if (do_regulation) {
                     if (addr == 0xdeadbeef) {
-                        if (halt == 1) {
-                            halt = 0;
-                            a53_leave_dbg(2, 1);
-                            a53_leave_dbg(3, 1);
-                            dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
-                            log_ms_record.decision = 2;
-                        }
+                        invoke_sched_epilogue(id, &log_ms_record);
                     }
                 }
             }
@@ -251,7 +242,7 @@ void reset_tmg() {
     }
     // throw_away_counter = 0;
 
-    halt = 0;
+    halt_mask = 0;
 
 }
 
