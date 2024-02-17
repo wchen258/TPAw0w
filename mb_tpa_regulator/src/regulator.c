@@ -59,27 +59,14 @@ void reset(void) {
 int main() {
     init_platform();
 
-    //Xil_DCacheFlush();
-    //Xil_DCacheDisable();
-    //Xil_ICacheDisable();
-    //Xil_L1DCacheDisable();
-    //Xil_L1ICacheDisable();
-    //Xil_L2CacheDisable();
-
     sleep(2);
     report("Started (Regulator 1.00016)");
     report("dbg address: 0x%x", &dbg);
-
-    //breport("TestT");
-    // breport("T%d %x", 123, 0xdeadbeef);
-    // report("breport testing finished");
 
     report("pointer: 0x%x", &inter_rpu_com->report_lock);
 
     while(1) {
         reset();
-	// report_ptrc_mem();
-	// report_tmg_mem();
         regulator_loop();
         report("loop exits");
     }
