@@ -1,9 +1,10 @@
 #include <stdint.h>
 #include "tmg_monitor.h"
-#include "coresight_lib.h"
 #include "dbg_util.h"
 #include "log_util.h"
 #include "xtime_l.h"
+#include "coresight_lib.h"
+#include "tpa_scheduler.h"
 
 static volatile uint8_t tmg_buf[4][TMG_BUFFER_SIZE / 4] __attribute__((section(".tmg_mem_zone")));
 
@@ -29,11 +30,6 @@ static XTime real_time_base [4] = {0};
 static uint8_t rt_base_log_pt [4] = {190, 190, 190, 190};
 static uint32_t acc_nominal_time [4] = {0};
 uint32_t entry_addr [4] = {0};
-// static uint8_t halt=0;
-static uint8_t halt_mask=0;
-static uint8_t halt_old=0;
-
-extern uint8_t trc_buf_lock;
 extern uint8_t hit_last;
 
 void report_event_hit(uint8_t id, uint8_t event) {
@@ -42,91 +38,6 @@ void report_event_hit(uint8_t id, uint8_t event) {
 
 void report_address_hit(uint8_t id, uint32_t address) {
     reported_hit[id] = address;
-}
-
-
-static void invoke_sched_old(uint8_t id, uint32_t real_time, struct ms_record* log_ms_record) {
-    if (real_time > acc_nominal_time[id] * dbg.alpha[id]) {
-        if (halt_old  == 0) {
-            halt_old = 1;
-            a53_enter_dbg(2);
-            trc_buf_lock |= 0b1 << 2;
-            a53_enter_dbg(3);
-            trc_buf_lock |= 0b1 << 3;
-            dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
-            log_ms_record->decision = 1;
-        }
-	} else if (real_time < acc_nominal_time[id] * dbg.alpha[id] * (1.0 - dbg.beta[id])) {  // this is consistent with the paper, Daniel's, and the old implementation 
-        if (halt_old == 1) {
-            halt_old = 0;
-            a53_leave_dbg(2, 1);
-            trc_buf_lock &= ~(0b1 << 2);
-            a53_leave_dbg(3, 1);
-            trc_buf_lock &= ~(0b1 << 3);
-            dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
-            log_ms_record->decision = 2;
-        }
-    }
-}
-
-static void enter_dbg_seq(uint8_t id) {
-    a53_enter_dbg(id);
-    trc_buf_lock |= 0b1 << id;
-    halt_mask |= 0b1 << id;
-}
-
-static void leave_dbg_seq(uint8_t id) {
-    a53_leave_dbg(id, 1);
-    trc_buf_lock &= ~(0b1 << id);
-    halt_mask &= ~(0b1 << id);
-}
-
-static void invoke_sched_vanilla(uint8_t id, uint32_t real_time, struct ms_record* log_ms_record) {
-    int j = id == 0 ? 1 : 2;
-    if (real_time > acc_nominal_time[id] * dbg.alpha[id]) {
-        // TPA violation occurs
-        for(int i=j; i<4; ++i) {
-            if (halt_mask >> i & 0b1) {
-                continue;
-            }
-            enter_dbg_seq(i);
-            dbg.milestone_timestamps[2][dbg.enter_dbg_ct++] = dbg.ms_ts_pt[id];
-            log_ms_record->decision = 1;
-        }
-	} else if (real_time < acc_nominal_time[id] * dbg.alpha[id] * (1.0 - dbg.beta[id])) {  // this is consistent with the paper, Daniel's, and the old implementation 
-        // enough positive slack accumuated 
-        for(int i=j; i<4; ++i) {
-            if (halt_mask >> i & 0b1) {
-                leave_dbg_seq(i);
-                dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
-                log_ms_record->decision = 2;
-            }
-        }
-    }
-}
-
-static void invoke_sched_epilogue_vanilla(uint8_t id, struct ms_record* log_ms_record) {
-    // if the mission critical core finished, release all. if core1, release core 2 and 3
-    int j = id == 0 ? 1 : 2;
-    for(int i=j; i<4; ++i) {
-        if (halt_mask >> i & 0b1) {
-            leave_dbg_seq(i);
-            dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
-            log_ms_record->decision = 2;
-        }
-    }
-}
-
-static void invoke_sched_epilogue_old(uint8_t id, struct ms_record* log_ms_record) {
-    if (halt_old == 1) {
-        halt_old = 0;
-        a53_leave_dbg(2, 1);
-        trc_buf_lock &= ~(0b1 << 2);
-        a53_leave_dbg(3, 1);
-        trc_buf_lock &= ~(0b1 << 3);
-        dbg.milestone_timestamps[3][dbg.leave_dbg_ct++] = dbg.ms_ts_pt[id];
-        log_ms_record->decision = 2;
-    }   
 }
 
 static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, uint32_t nominal_time, milestone * new_ms) {
@@ -163,9 +74,10 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, ui
     }
 
     // invoke the scheduler
+    // uint8_t do_regulation = 1; //(dbg.tpa_mode >> (28 + id)) & 0b1;
     uint8_t do_regulation = (dbg.tpa_mode >> (28 + id)) & 0b1;
     if (do_regulation) {
-        invoke_sched_vanilla(id, real_time, &log_ms_record);
+    	invoke_sched_vanilla_2lvl(id, real_time, acc_nominal_time, &log_ms_record);
     }
 
     // milestone update
@@ -187,7 +99,7 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, ui
                 if (do_regulation) {
                     if (addr == 0xdeadbeef) {
                         // deadbeef indicate the end of the TMG
-                        invoke_sched_epilogue_vanilla(id, &log_ms_record);
+                    	invoke_sched_epilogue_vanilla_2lvl(id, &log_ms_record);
                     }
                 }
             }
@@ -260,9 +172,7 @@ void reset_tmg() {
         rt_base_log_pt[i] = 190;
     }
 
-    halt_mask = 0;
-    halt_old = 0;
-
+    reset_sched();
 }
 
 void report_tmg_mem() {
