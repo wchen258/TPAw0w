@@ -13,6 +13,7 @@ static uint8_t halt_resume_mask_diff = 0;
 // vanilla 2lvl
 static uint32_t prev_cores_negative_slack [4] = {0, 0, 0, 0};
 static XTime self_halt_timeout [4] = {0, 0, 0, 0};
+static uint8_t cores_core_mask [4] = {0, 0, 0, 0};
 static uint8_t master_halt;
 static uint8_t slave_halt;
 
@@ -43,8 +44,11 @@ void reset_sched() {
 	halt_mask = 0;
 	master_halt = 0;
 	slave_halt = 0;
-	for (i = 0; i < 4; ++i)
+	for (i = 0; i < 4; ++i) {
 		prev_cores_negative_slack[i] = 0;
+        self_halt_timeout[i] = 0;
+        cores_core_mask[i] = 0;
+    }
 }
 
 /*  sched vanilla
@@ -203,3 +207,16 @@ void invoke_sched_period_vanilla_2lvl(uint8_t id) {
     Adaptive SS
 */
 
+void invoke_sched_adaptive_ss(uint8_t id, uint32_t real_time, uint32_t* acc_nominal_time, struct ms_record* log_ms_record) {
+    uint32_t i, negative_slack;
+    uint32_t setpoint = acc_nominal_time[id] * dbg.alpha[id];
+    uint32_t resumepoint = setpoint - (dbg.expected_solo_end_time[id] * dbg.beta[id]);
+
+    if (real_time > setpoint) {
+        negative_slack = real_time - (acc_nominal_time[id] * dbg.alpha[id]);
+    
+        if (prev_cores_negative_slack[id] == 0) {
+            
+        }
+    }
+}
