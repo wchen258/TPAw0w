@@ -35,11 +35,12 @@ void regulator_loop(void) {
 		for (i = 0; i < 4; ++i) {
 			if (((hit_last >> i) & 0b1) == 0) {
                 // check the locking bit mask. A locking buffer indicates the corresponding core is halted
-                if (trc_buf_lock >> i & 0b1) {
-                    continue;
+                if (!(trc_buf_lock >> i & 0b1)) {
+				    handle_buffer(i);
+				    handle_hit(i);
                 }
-				handle_buffer(i);
-				handle_hit(i);
+
+                invoke_sched_period_vanilla_2lvl(i);
 			}
 		}
 	}
