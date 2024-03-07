@@ -40,8 +40,9 @@ void regulator_loop(void) {
 				    handle_hit(i);
                 }
 
-                invoke_sched_period_vanilla_2lvl(i);
-			}
+                //invoke_sched_period_vanilla_2lvl(i);
+                invoke_sched_period_adaptive_ss(i);
+            }
 		}
 	}
 }

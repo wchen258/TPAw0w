@@ -77,7 +77,8 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, ui
     // uint8_t do_regulation = 1; //(dbg.tpa_mode >> (28 + id)) & 0b1;
     uint8_t do_regulation = (dbg.tpa_mode >> (28 + id)) & 0b1;
     if (do_regulation) {
-    	invoke_sched_vanilla_2lvl(id, real_time, acc_nominal_time, &log_ms_record);
+    	// invoke_sched_vanilla_2lvl(id, real_time, acc_nominal_time, &log_ms_record);
+        invoke_sched_adaptive_ss(id, real_time, acc_nominal_time, &log_ms_record);
     }
 
     // milestone update
@@ -99,7 +100,8 @@ static void set_new_ms_under_monitor(uint8_t id, uint32_t current_ms_address, ui
                 if (do_regulation) {
                     if (addr == 0xdeadbeef) {
                         // deadbeef indicate the end of the TMG
-                    	invoke_sched_epilogue_vanilla_2lvl(id, &log_ms_record);
+                    	// invoke_sched_epilogue_vanilla_2lvl(id, &log_ms_record);
+                        invoke_sched_epilogue_adaptive_ss(id, &log_ms_record);
                     }
                 }
             }

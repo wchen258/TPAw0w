@@ -17,7 +17,16 @@ static uint8_t cores_core_mask [4] = {0, 0, 0, 0};
 static uint8_t master_halt;
 static uint8_t slave_halt;
 
+//adaptive ss
+static uint32_t ass_prev_negative_slack [4] = {0, 0, 0, 0};
+static XTime    ass_self_halt_timeout [4] = {0, 0, 0, 0};
+static uint8_t  ass_prev_halt_decision [4] = {4, 4, 4, 4};
+
+
 static void enter_dbg_seq(uint8_t id) {
+    if (id >= 4)
+        return;
+
 	if (halt_mask >> id & 0b1)
 		return;
 
@@ -29,6 +38,9 @@ static void enter_dbg_seq(uint8_t id) {
 }
 
 static void leave_dbg_seq(uint8_t id) {
+    if (id >= 4)
+        return;
+
 	if (!(halt_mask >> id & 0b1))
 		return;
 
@@ -49,6 +61,15 @@ void reset_sched() {
         self_halt_timeout[i] = 0;
         cores_core_mask[i] = 0;
     }
+
+    //adaptive ss shit
+    for (i = 0; i < 4; ++i) {
+        ass_prev_negative_slack[i] = 0;
+        ass_self_halt_timeout[i] = 0;
+        ass_prev_halt_decision[i] = 4;
+    }
+
+    halt_resume_mask_diff = 0;
 }
 
 /*  sched vanilla
@@ -208,15 +229,73 @@ void invoke_sched_period_vanilla_2lvl(uint8_t id) {
 */
 
 void invoke_sched_adaptive_ss(uint8_t id, uint32_t real_time, uint32_t* acc_nominal_time, struct ms_record* log_ms_record) {
+    uint8_t j;
     uint32_t i, negative_slack;
     uint32_t setpoint = acc_nominal_time[id] * dbg.alpha[id];
     uint32_t resumepoint = setpoint - (dbg.expected_solo_end_time[id] * dbg.beta[id]);
 
+    halt_resume_mask_diff = 0;
+
     if (real_time > setpoint) {
         negative_slack = real_time - (acc_nominal_time[id] * dbg.alpha[id]);
     
-        if (prev_cores_negative_slack[id] == 0) {
-            
+        if (negative_slack >= ass_prev_negative_slack[id]) {
+            ass_prev_halt_decision[id] = (ass_prev_halt_decision[id] == id + 1) ? ass_prev_halt_decision[id] : (ass_prev_halt_decision[id] - 1);
+
+            for (j = 3; j >= ass_prev_halt_decision[id]; j--) {
+                enter_dbg_seq(j);
+            }
+
+            ass_prev_negative_slack[id] = negative_slack;
+        }
+    } else if (real_time < setpoint) {
+        uint8_t prev_halt_decision = ass_prev_halt_decision[id];
+        ass_prev_halt_decision[id] = 4;
+        ass_prev_negative_slack[id] = 0;
+
+        for (j = prev_halt_decision; j < 4; ++j) {
+            if (ass_self_halt_timeout[j] == 0 && ass_prev_halt_decision[0] > j && ass_prev_halt_decision[1] > j && ass_prev_halt_decision[2] > j && ass_prev_halt_decision[3] > j) {
+                leave_dbg_seq(j);
+            }
+        }
+
+        if (real_time < resumepoint && ass_self_halt_timeout[id] == 0) {
+            XTime_GetTime(&ass_self_halt_timeout[id]);
+            ass_self_halt_timeout[id] = ass_self_halt_timeout[id] + (resumepoint - real_time);
+            halt_resume_mask_diff |= (0b1 << id);
+        }
+    }
+
+    log_ms_record->decision = halt_resume_mask_diff;
+}
+
+void invoke_sched_epilogue_adaptive_ss(uint8_t id, struct ms_record* log_ms_record) {
+    uint32_t i;
+    halt_resume_mask_diff = 0;
+
+    ass_prev_halt_decision[id] = 4;
+    ass_prev_negative_slack[id] = 0;
+
+    for (i = id; i < 4; ++i) {
+        if (ass_self_halt_timeout[i] == 0 && ass_prev_halt_decision[0] > i && ass_prev_halt_decision[1] > i && ass_prev_halt_decision[2] > i && ass_prev_halt_decision[3] > i) {
+            leave_dbg_seq(i);
+        }
+    }
+
+    log_ms_record->decision = halt_resume_mask_diff;
+}
+
+void invoke_sched_period_adaptive_ss(uint8_t id) {
+    XTime current_time;
+
+    if (ass_self_halt_timeout[id] != 0) {
+        XTime_GetTime(&current_time);
+
+        if (current_time < ass_self_halt_timeout[id]) {
+            enter_dbg_seq(id);
+        } else {
+            leave_dbg_seq(id);
+            ass_self_halt_timeout[id] = 0;
         }
     }
 }
